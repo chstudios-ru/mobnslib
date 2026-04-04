@@ -236,3 +236,13 @@ class nsLib:
             access_token = json.load(df)['access_token']
 
         return {'authorization':f"Bearer {access_token}"}
+    
+    def getVer(self):
+        response = self.session.get(
+            f"{self.url1}/api/v1/mobile/parent/app-versions/published",
+            params={
+                'appVersion':self.appVer,
+                'lng':self.lng
+            }
+        )
+        return response.text.replace('"','')
