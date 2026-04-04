@@ -68,7 +68,7 @@ class nsLib:
             mfa_type_asked = response.json().get('mfa_details').get('type')
             mfa_code = input(f"Введите код {totp[mfa_type_asked]}:")
             response = self.session.post(
-                f"{self.url2}/aas/oauth2/api/login/{url[mfa_type_asked]}/verify"
+                f"{self.url2}/aas/oauth2/api/login/{url[mfa_type_asked]}/verify",
                 params={
                     'code':mfa_code
                 }
