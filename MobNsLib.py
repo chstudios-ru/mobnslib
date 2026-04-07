@@ -1,8 +1,8 @@
-import getpass, requests, json, os
+import getpass, requests, json, os, logging
 from datetime import datetime, timedelta
 
 class nsLib:
-    def __init__(self, url):
+    def __init__(self, url, logName=None, log_level=None):
         self.session = requests.Session()
 
         self.url = url
@@ -13,9 +13,29 @@ class nsLib:
         self.lng = "ru"
         self.client_secret = '04064338-13df-4747-8dea-69849f9ecdf0'
 
+        logger = logging.getLogger("MyBigScript")
+        logger.setLevel(logging.DEBUG)
+        self.log = logger
+
+        level = {
+            1: logging.ERROR,
+            2: logging.WARNING,
+            3: logging.INFO,
+            4: logging.DEBUG
+        }
+        print(type(logName))
+        if logName:
+            file_handler = logging.FileHandler(logName, encoding="utf-8", mode='w')
+            target_level = level.get(log_level, logging.CRITICAL)
+            file_handler.setLevel(target_level)
+            file_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(file_format)
+            logger.addHandler(file_handler)
+
     def esiaLogin(self, filename=None, login_esia=None):
 
-        totp = {
+        log = self.log
+        totp = {   
             'TTP':'totp',
             'MAX':'из макса',
             'SMS':'из смс',
@@ -32,6 +52,7 @@ class nsLib:
         )
         loginState = response.text
         loginState = loginState.replace('"','')
+        log.info(f"{response} {response.url}")
 
         response = self.session.get(
             f"{self.url}/webapi/sso/esia/crosslogin",
@@ -41,15 +62,18 @@ class nsLib:
                 'esia_role':'1'
             }
         )
+        log.info(f"{response} {response.url}")
 
         pattern = '%d-%m-%Y_%H-%M-%S'
         ondate = datetime.now().strftime(pattern)
-        self.session.get(
+        response = self.session.get(
             f"{self.url2}/rs/dscl",
             params={
             'ondate':ondate
             }
         )
+        log.info(f"{response} {response.url}")
+        
 
         if login_esia == None:
             login_esia = {
@@ -60,9 +84,11 @@ class nsLib:
             f"{self.url2}/aas/oauth2/api/login/", 
             json=login_esia
         )
+        log.info(f"{response} {response.url}")
         print(response.text)
         if str(response.status_code) == '201':
             print("Неправильные данные")
+            log.info(f"{response} {response.url}")
             return None
         else:
             mfa_type_asked = response.json().get('mfa_details').get('type')
@@ -73,19 +99,25 @@ class nsLib:
                     'code':mfa_code
                 }
             )
+            log.info(f"{response} {response.url}")
+
             if response.json().get("action") == "MAX_QUIZ":
                 print(response.text)
                 response = self.session.post(
                     f"{self.url2}/aas/oauth2/api/login/quiz-max/skip"
                 )
+            log.info(f"{response} {response.url}")
+
             tmp = response.json().get('redirect_url')
             response = self.session.get(tmp)
+            log.info(f"{response} {response.url}")
 
             response = self.session.get(
                 f"{self.url}/webapi/sso/esia/account-info", 
                 params={'loginState':loginState}
             )
             tmp = response.json()
+            log.info(f"{response} {response.url}")
 
             id = tmp['users'][0]['id']
             data = {
@@ -98,6 +130,7 @@ class nsLib:
                 f"{self.url}/webapi/auth/login",
                 data=data)
             at = response.json()['at']
+            log.info(f"{response} {response.url}")
 
             headers = {
                 'at':at
@@ -107,6 +140,7 @@ class nsLib:
                 headers=headers
             )
             device_code = response.json()['userCode']
+            log.info(f"{response} {response.url}")
 
             data = {
                 'grant_type':'urn:ietf:params:oauth:grant-type:device_code',
@@ -118,16 +152,20 @@ class nsLib:
                 f"{self.url3}/connect/token",
                 data=data
             )
+            log.info(f"{response} {response.url}")
+
             tokens = {
                 'access_token':response.json()['access_token'],
                 'refresh_token':response.json()['refresh_token'],
                 'expires_in':response.json()['expires_in']
             }
 
-            self.session.get(
+            response = self.session.get(
                 f"{self.url}/logout",
                 headers=headers
             )
+            log.info(f"{response} {response.url}")
+
             if filename != None:
                 with open(filename, 'w', encoding='utf_8') as n:
                     json.dump(tokens, n)
@@ -135,6 +173,8 @@ class nsLib:
         return {'authorization':f"Bearer {tokens.get('access_token')}"}
 
     def getInfo(self, headers):
+        log = self.log
+
         response = self.session.get(
             f"{self.url3}/users/endpoints", 
             headers=headers,
@@ -144,6 +184,7 @@ class nsLib:
             }
         )
         serverId = response.json()[0]['serverId']
+        log.info(f"{response} {response.url}")
 
         response = self.session.get(
             f"{self.url}/api/mobile/users",
@@ -154,6 +195,7 @@ class nsLib:
                 'lng':self.lng
             }
         )
+        log.info(f"{response} {response.url}")
 
         info = {
             'serverId':serverId,
@@ -178,6 +220,8 @@ class nsLib:
         return start_of_week, end_of_week
 
     def diary(self, headers, diaryName, startDate=None, studentId=None, endDate=None, day=None):
+        log = self.log
+
         if studentId == None:
             studentId = self.getInfo(headers=headers).get('studentId')
         if startDate == None and endDate == None:
@@ -195,6 +239,7 @@ class nsLib:
             },
             headers=headers
         )
+        log.info(f"{response} {response.url}")
 
         with open(diaryName, 'w', encoding='utf_8') as diary:
             diary.write(response.text)
@@ -202,6 +247,8 @@ class nsLib:
         return response.json()
 
     def tokenRefresh(self, filename):
+        log = self.log
+
         if not os.path.exists(filename):
             print('Файл не найден')
             return False
@@ -218,6 +265,8 @@ class nsLib:
             f"{self.url3}/connect/token",
             data=data
         )
+        log.info(f"{response} {response.url}")
+
         tokens = {
                 'access_token':response.json()['access_token'],
                 'refresh_token':response.json()['refresh_token'],
@@ -245,4 +294,5 @@ class nsLib:
                 'lng':self.lng
             }
         )
+        self.log.info(f"{response} {response.url}")
         return response.text.replace('"','')
