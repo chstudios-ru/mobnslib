@@ -31,20 +31,12 @@ class nsLib:
             file_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
             file_handler.setFormatter(file_format)
             logger.addHandler(file_handler)
+            self.log.info(f"Log_level {log_level}")
 
-    def esiaLogin(self, filename=None, login_esia=None):
-
+    def esiaLogin(self, filename=None, login_esia=None, redir_url=None):
         log = self.log
-        totp = {   
-            'TTP':'totp',
-            'MAX':'из макса',
-            'SMS':'из смс',
-        }
-        url = {
-            'TTP':'totp',
-            'SMS':'otp',
-            'MAX':'otp-max'
-        }
+
+       
         data = {'mobile':'1'}
         response = self.session.post(
             f"{self.url}/webapi/auth/login-state",
@@ -53,6 +45,7 @@ class nsLib:
         loginState = response.text
         loginState = loginState.replace('"','')
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
         response = self.session.get(
             f"{self.url}/webapi/sso/esia/crosslogin",
@@ -63,6 +56,7 @@ class nsLib:
             }
         )
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
         pattern = '%d-%m-%Y_%H-%M-%S'
         ondate = datetime.now().strftime(pattern)
@@ -73,8 +67,8 @@ class nsLib:
             }
         )
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
         
-
         if login_esia == None:
             login_esia = {
             'login': input("Ваш логин:"),
@@ -85,92 +79,118 @@ class nsLib:
             json=login_esia
         )
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
         print(response.text)
         if str(response.status_code) == '201':
-            print("Неправильные данные")
             log.info(f"{response} {response.url}")
-            return None
-        else:
-            mfa_type_asked = response.json().get('mfa_details').get('type')
-            mfa_code = input(f"Введите код {totp[mfa_type_asked]}:")
-            response = self.session.post(
-                f"{self.url2}/aas/oauth2/api/login/{url[mfa_type_asked]}/verify",
-                params={
-                    'code':mfa_code
-                }
-            )
-            log.info(f"{response} {response.url}")
+            raise ValueError("Неправильные данные")
+        if response.get('action') == 'ENTER_MFA':
+            self.response = response
+            raise esiaMFA("Требуется подтверждение MFA")
+            
+        response = self.session.get(redir_url)
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
-            if response.json().get("action") == "MAX_QUIZ":
-                print(response.text)
-                response = self.session.post(
-                    f"{self.url2}/aas/oauth2/api/login/quiz-max/skip"
-                )
-            log.info(f"{response} {response.url}")
+        response = self.session.get(
+            f"{self.url}/webapi/sso/esia/account-info", 
+            params={'loginState':loginState}
+        )
+        tmp = response.json()
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
-            tmp = response.json().get('redirect_url')
-            response = self.session.get(tmp)
-            log.info(f"{response} {response.url}")
+        id = tmp['users'][0]['id']
+        data = {
+            'idp':'esia',
+            'loginState':loginState,
+            'LoginType':'8',
+            'lscope':id
+        }
+        response = self.session.post(
+            f"{self.url}/webapi/auth/login",
+            data=data)
+        at = response.json()['at']
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
-            response = self.session.get(
-                f"{self.url}/webapi/sso/esia/account-info", 
-                params={'loginState':loginState}
-            )
-            tmp = response.json()
-            log.info(f"{response} {response.url}")
+        headers = {
+            'at':at
+        }
+        response = self.session.get(
+            f"{self.url}/webapi/mysettings/mobile/pincode",
+            headers=headers
+        )
+        device_code = response.json()['userCode']
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
-            id = tmp['users'][0]['id']
-            data = {
-                'idp':'esia',
-                'loginState':loginState,
-                'LoginType':'8',
-                'lscope':id
-            }
-            response = self.session.post(
-                f"{self.url}/webapi/auth/login",
-                data=data)
-            at = response.json()['at']
-            log.info(f"{response} {response.url}")
+        data = {
+            'grant_type':'urn:ietf:params:oauth:grant-type:device_code',
+            'device_code':device_code,
+            'client_id':'parent-mobile',
+            'client_secret':self.client_secret
+        }
+        response = self.session.post(
+            f"{self.url3}/connect/token",
+            data=data
+        )
+        log.info(f"{response} {response.url}")
 
-            headers = {
-                'at':at
-            }
-            response = self.session.get(
-                f"{self.url}/webapi/mysettings/mobile/pincode",
-                headers=headers
-            )
-            device_code = response.json()['userCode']
-            log.info(f"{response} {response.url}")
+        tokens = {
+            'access_token':response.json()['access_token'],
+            'refresh_token':response.json()['refresh_token'],
+            'expires_in':response.json()['expires_in']
+        }
 
-            data = {
-                'grant_type':'urn:ietf:params:oauth:grant-type:device_code',
-                'device_code':device_code,
-                'client_id':'parent-mobile',
-                'client_secret':self.client_secret
-            }
-            response = self.session.post(
-                f"{self.url3}/connect/token",
-                data=data
-            )
-            log.info(f"{response} {response.url}")
+        response = self.session.get(
+            f"{self.url}/logout",
+            headers=headers
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
-            tokens = {
-                'access_token':response.json()['access_token'],
-                'refresh_token':response.json()['refresh_token'],
-                'expires_in':response.json()['expires_in']
-            }
-
-            response = self.session.get(
-                f"{self.url}/logout",
-                headers=headers
-            )
-            log.info(f"{response} {response.url}")
-
-            if filename != None:
-                with open(filename, 'w', encoding='utf_8') as n:
-                    json.dump(tokens, n)
+        if filename != None:
+            with open(filename, 'w', encoding='utf_8') as n:
+                json.dump(tokens, n)
 
         return {'authorization':f"Bearer {tokens.get('access_token')}"}
+
+    def esiaMFA(self):
+        log = self.log
+
+        totp = {   
+            'TTP':'totp',
+            'MAX':'из макса',
+            'SMS':'из смс',
+        }
+        url = {
+            'TTP':'totp',
+            'SMS':'otp',
+            'MAX':'otp-max'
+        }
+
+        mfa_type_asked = response.json().get('mfa_details').get('type')
+        mfa_code = input(f"Введите код {totp[mfa_type_asked]}:")
+        response = self.session.post(
+            f"{self.url2}/aas/oauth2/api/login/{url[mfa_type_asked]}/verify",
+            params={
+                'code':mfa_code
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        if response.json().get("action") == "MAX_QUIZ":
+            print(response.text)
+            response = self.session.post(
+                f"{self.url2}/aas/oauth2/api/login/quiz-max/skip"
+            )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        tmp = response.json().get('redirect_url')
+
 
     def getInfo(self, headers):
         log = self.log
@@ -185,6 +205,7 @@ class nsLib:
         )
         serverId = response.json()[0]['serverId']
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
         response = self.session.get(
             f"{self.url}/api/mobile/users",
@@ -196,6 +217,7 @@ class nsLib:
             }
         )
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
         info = {
             'serverId':serverId,
@@ -240,6 +262,7 @@ class nsLib:
             headers=headers
         )
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
         with open(diaryName, 'w', encoding='utf_8') as diary:
             diary.write(response.text)
@@ -266,6 +289,7 @@ class nsLib:
             data=data
         )
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
         tokens = {
                 'access_token':response.json()['access_token'],
@@ -295,4 +319,13 @@ class nsLib:
             }
         )
         self.log.info(f"{response} {response.url}")
+        self.log.debug(f"{response.text}")
         return response.text.replace('"','')
+    
+class esiaMFA(Exception):
+    """Исключение для случаев, когда авторизация esia требует MFA."""
+    pass
+
+class esiaSuspicios(Exception):
+    """Исключение для случаев, когда просят пройти подтверждение или чет подобное."""
+    pass
