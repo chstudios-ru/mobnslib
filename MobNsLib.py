@@ -4,11 +4,16 @@ from datetime import datetime, timedelta
 class HTMLTruncateHandler(logging.FileHandler):
     """Специальный обработчик для файла, который режет HTML"""
     def emit(self, record):
+        msg_lower = record.msg.lower()
         # Если в сообщении есть признаки HTML — режем его
-        if isinstance(record.msg, str) and "<!DOCTYPE html>" in record.msg:
+        if "<!doctype html>" in msg_lower:
             record.msg = "<!DOCTYPE html>..."
-        if isinstance(record.msg, str) and "classmeetingId" in record.msg:
-            record.msg = "[{classmeetingId..."
+
+        sensitive_keys = ["classmeetingid", "access"]
+        if any(key in msg_lower for key in sensitive_keys):
+            # Проверяем, не обрезали ли мы её уже (на случай длинных цепочек)
+            if len(record.msg) > 30:
+                record.msg = record.msg[:30] + "..."
         super().emit(record)
 
 class nsLib:
@@ -71,6 +76,7 @@ class nsLib:
             }
         )
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
         pattern = '%d-%m-%Y_%H-%M-%S'
         ondate = datetime.now().strftime(pattern)
@@ -189,6 +195,7 @@ class nsLib:
             data=data
         )
         log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
 
         tokens = {
             'access_token':response.json()['access_token'],
