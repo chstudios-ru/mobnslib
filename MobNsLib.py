@@ -9,11 +9,11 @@ class HTMLTruncateHandler(logging.FileHandler):
         if "<!doctype html>" in msg_lower:
             record.msg = "<!DOCTYPE html>..."
 
-        sensitive_keys = ["classmeetingid", "access"]
+        sensitive_keys = ["classmeetingid", "access", "code=ey"]
         if any(key in msg_lower for key in sensitive_keys):
             # Проверяем, не обрезали ли мы её уже (на случай длинных цепочек)
-            if len(record.msg) > 30:
-                record.msg = record.msg[:30] + "..."
+            if len(record.msg) > 50:
+                record.msg = record.msg[:50] + "..."
         super().emit(record)
 
 class nsLib:
@@ -50,12 +50,6 @@ class nsLib:
 
     def esiaLogin(self, login_esia=None):
         log = self.log
-
-        totp = {   
-            'TTP':'totp',
-            'MAX':'из макса',
-            'SMS':'из смс',
-        }
 
         data = {'mobile':'1'}
         response = self.session.post(
@@ -103,11 +97,12 @@ class nsLib:
         print(response.text)
         if str(response.status_code) == '201':
             log.info(f"{response} {response.url}")
+            log.error(f"Неправильный логин или пароль {response.text}")
             raise ValueError("Неправильные данные")
         if response.json().get('action') == 'ENTER_MFA':
             self.mfa_type_asked = response.json().get('mfa_details').get('type')
 
-            return {'status':response.json().get('action'), 'desc':totp.get(response.json().get('mfa_details').get('type'))}
+            return {'status':response.json().get('action'), 'desc':response.json().get('mfa_details').get('type'), 'details':response.json().get('mfa_details')}
         
         if response.get('action') == 'DONE':
             self.redir_url = response.json().get('redirect_url')
