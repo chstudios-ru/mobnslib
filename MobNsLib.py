@@ -94,7 +94,6 @@ class nsLib:
         )
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
-        print(response.text)
         if str(response.status_code) == '201':
             log.info(f"{response} {response.url}")
             log.error(f"Неправильный логин или пароль {response.text}")
@@ -102,7 +101,13 @@ class nsLib:
         if response.json().get('action') == 'ENTER_MFA':
             self.mfa_type_asked = response.json().get('mfa_details').get('type')
 
-            return {'status':response.json().get('action'), 'desc':response.json().get('mfa_details').get('type'), 'details':response.json().get('mfa_details')}
+            sth = {
+                'status':response.json().get('action'),
+                'desc':response.json().get('mfa_details').get('type'),
+                'details':response.json().get('mfa_details')
+            }
+
+            return sth
         
         if response.get('action') == 'DONE':
             self.redir_url = response.json().get('redirect_url')
@@ -215,18 +220,6 @@ class nsLib:
         log = self.log
 
         response = self.session.get(
-            f"{self.url3}/users/endpoints", 
-            headers=headers,
-            params={
-                'appVersion':self.appVer,
-                'lng':self.lng
-            }
-        )
-        serverId = response.json()[0]['serverId']
-        log.info(f"{response} {response.url}")
-        log.debug(f"{response.text}")
-
-        response = self.session.get(
             f"{self.url}/api/mobile/users",
             headers=headers,
             params={
@@ -238,15 +231,34 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        info = {
-            'serverId':serverId,
-            'firstName':response.json()[0]['firstName'],
-            'schoolId':response.json()[0]['organizations'][0]['organization']['id'],
-            'studentId':response.json()[0]['id'],
-            'classId':response.json()[0]['organizations'][0]['classes'][0]['classId']
-        }
+        try:
+            info = {
+                'firstName':response.json()[0]['firstName'],
+                'schoolId':response.json()[0]['organizations'][0]['organization']['id'],
+                'studentId':response.json()[0]['id'],
+                'classId':response.json()[0]['organizations'][0]['classes'][0]['classId']
+            }
+        except (KeyError, IndexError, TypeError):
+            info = None
 
         return info
+    
+    def getServerId(self, headers):
+        log = self.log
+
+        response = self.session.get(
+            f"{self.url3}/users/endpoints", 
+            headers=headers,
+            params={
+                'appVersion':self.appVer,
+                'lng':self.lng
+            }
+        )
+        serverId = response.json()[0].get('serverId')
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        return serverId
 
     def get_week_range(self, pattern, date=None):
         if date is None:
@@ -322,8 +334,7 @@ class nsLib:
 
     def getToken(self, filename):
         if not os.path.exists(filename):
-            print('Файл не найден')
-            return False
+            raise FileNotFoundError("Файл не найден")
         with open(filename, 'r', encoding='utf-8') as df:
             access_token = json.load(df)['access_token']
 
