@@ -16,6 +16,38 @@ class HTMLTruncateHandler(logging.FileHandler):
                 record.msg = record.msg[:50] + "..."
         super().emit(record)
 
+class NoDataInResponse(Exception):
+    def __init__(self, message="no expected data in response"):
+        # 1. Сначала вызываем логгер
+        nsLib.self.log.error(message, exc_info=True)
+        
+        # 2. Обязательно вызываем конструктор базового класса Exception
+        super().__init__(message)
+
+class NoLoginOrPassword(Exception):
+    def __init__(self, message="no login or password"):
+        # 1. Сначала вызываем логгер
+        nsLib.self.log.error(message, exc_info=True)
+        
+        # 2. Обязательно вызываем конструктор базового класса Exception
+        super().__init__(message)
+
+class UnexpectedResponse(Exception):
+    def __init__(self, message="unexpected response"):
+        # 1. Сначала вызываем логгер
+        nsLib.self.log.error(message, exc_info=True)
+        
+        # 2. Обязательно вызываем конструктор базового класса Exception
+        super().__init__(message)
+
+class NoDataInFile(Exception):
+    def __init__(self, message="an error occurred while extracting data from a file"):
+        # 1. Сначала вызываем логгер
+        nsLib.self.log.error(message, exc_info=True)
+        
+        # 2. Обязательно вызываем конструктор базового класса Exception
+        super().__init__(message)
+
 class nsLib:
     def __init__(self, url, logName=None, log_level=None):
         self.session = requests.Session()
@@ -48,7 +80,7 @@ class nsLib:
             logger.addHandler(file_handler)
             self.log.info(f"Log_level {log_level}")
 
-    def esiaLogin(self, login_esia=None):
+    def esiaLogin(self, login=None, password=None):
         log = self.log
 
         data = {'mobile':'1'}
@@ -83,36 +115,50 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
         
-        if login_esia == None:
-            login_esia = {
-            'login': input("Ваш логин:"),
-            'password': getpass.getpass("Ваш пароль:")
-            }
+        if not (login or password):
+            log.error("No login or password")
+            raise 
+
         response = self.session.post(
             f"{self.url2}/aas/oauth2/api/login/", 
-            json=login_esia
+            json={
+                'login':login,
+                'password':password
+            }
         )
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
+        
         if str(response.status_code) == '201':
             log.info(f"{response} {response.url}")
             log.error(f"Неправильный логин или пароль {response.text}")
-            raise ValueError("Неправильные данные")
+            raise ValueError()
         if response.json().get('action') == 'ENTER_MFA':
-            self.mfa_type_asked = response.json().get('mfa_details').get('type')
-
-            sth = {
-                'status':response.json().get('action'),
-                'desc':response.json().get('mfa_details').get('type'),
-                'details':response.json().get('mfa_details')
-            }
-
+            try:
+                tmp = response.json()
+                self.mfa_type_asked = tmp['mfa_details']['type']
+                sth = {
+                    'status':tmp['action'],
+                    'desc':tmp['mfa_details']['type'],
+                    'details':tmp['mfa_details']
+                }
+            except (KeyError, IndexError, TypeError):
+                raise NoDataInResponse()
+            
             return sth
         
         if response.get('action') == 'DONE':
-            self.redir_url = response.json().get('redirect_url')
+            try:
+                tmp = response.json()
+                self.redir_url = tmp['redirect_url']
+                rnd = {'status':tmp['action']}
+            except (KeyError, IndexError, TypeError):
+                raise NoDataInResponse()
 
-            return {'status':response.json().get('action')}
+            return rnd
+
+        log.error(f"Unexpected response")
+        raise 
         
     def esiaMFA(self, mfa_code):
         log = self.log
@@ -137,12 +183,16 @@ class nsLib:
             response = self.session.post(
                 f"{self.url2}/aas/oauth2/api/login/quiz-max/skip"
             )
-        log.info(f"{response} {response.url}")
-        log.debug(f"{response.text}")
+            log.info(f"{response} {response.url}")
+            log.debug(f"{response.text}")
 
-        self.redir_url = response.json().get('redirect_url')
+        try:
+            self.redir_url = response.json().get('redirect_url')
+            rnd = {'status':response.json().get('action')}
+        except (KeyError, IndexError, TypeError):
+            raise NoDataInResponse()
 
-        return {'status':response.json().get('action')}
+        return rnd
             
     def esiaLoginEnd(self, filename=None):
         log = self.log
@@ -155,41 +205,45 @@ class nsLib:
             f"{self.url}/webapi/sso/esia/account-info", 
             params={'loginState':self.loginState}
         )
-        tmp = response.json()
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        id = tmp['users'][0]['id']
-        data = {
-            'idp':'esia',
-            'loginState':self.loginState,
-            'LoginType':'8',
-            'lscope':id
-        }
+        try:
+            tmp = response.json()        
+            data = {
+                'idp':'esia',
+                'loginState':self.loginState,
+                'LoginType':'8',
+                'lscope':tmp['users'][0]['id']
+            }
+        except (KeyError, IndexError, TypeError):
+            raise NoDataInResponse()
         response = self.session.post(
             f"{self.url}/webapi/auth/login",
             data=data)
-        at = response.json()['at']
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        headers = {
-            'at':at
-        }
+        try:
+            headers = {'at':response.json()['at']}
+        except (KeyError, IndexError, TypeError):
+            raise NoDataInResponse()
         response = self.session.get(
             f"{self.url}/webapi/mysettings/mobile/pincode",
             headers=headers
         )
-        device_code = response.json()['userCode']
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        data = {
-            'grant_type':'urn:ietf:params:oauth:grant-type:device_code',
-            'device_code':device_code,
-            'client_id':'parent-mobile',
-            'client_secret':self.client_secret
-        }
+        try:
+            data = {
+                'grant_type':'urn:ietf:params:oauth:grant-type:device_code',
+                'device_code':response.json()['userCode'],
+                'client_id':'parent-mobile',
+                'client_secret':self.client_secret
+            }
+        except (KeyError, IndexError, TypeError):
+            raise NoDataInResponse()
         response = self.session.post(
             f"{self.url3}/connect/token",
             data=data
@@ -197,11 +251,15 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        tokens = {
-            'access_token':response.json()['access_token'],
-            'refresh_token':response.json()['refresh_token'],
-            'expires_in':response.json()['expires_in']
-        }
+        try:
+            tmp = response.json()
+            tokens = {
+                'access_token':tmp['access_token'],
+                'refresh_token':tmp['refresh_token'],
+                'expires_in':tmp['expires_in']
+            }
+        except (KeyError, IndexError, TypeError):
+            raise NoDataInResponse()
 
         response = self.session.get(
             f"{self.url}/logout",
@@ -232,14 +290,15 @@ class nsLib:
         log.debug(f"{response.text}")
 
         try:
+            tmp = response.json()
             info = {
-                'firstName':response.json()[0]['firstName'],
-                'schoolId':response.json()[0]['organizations'][0]['organization']['id'],
-                'studentId':response.json()[0]['id'],
-                'classId':response.json()[0]['organizations'][0]['classes'][0]['classId']
+                'firstName':tmp[0]['firstName'],
+                'schoolId':tmp[0]['organizations'][0]['organization']['id'],
+                'studentId':tmp[0]['id'],
+                'classId':tmp[0]['organizations'][0]['classes'][0]['classId']
             }
         except (KeyError, IndexError, TypeError):
-            info = None
+            raise NoDataInResponse()
 
         return info
     
@@ -254,7 +313,10 @@ class nsLib:
                 'lng':self.lng
             }
         )
-        serverId = response.json()[0].get('serverId')
+        try:
+            serverId = response.json()[0].get('serverId')
+        except (KeyError, IndexError, TypeError):
+            raise NoDataInResponse()
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
@@ -307,7 +369,10 @@ class nsLib:
             print('Файл не найден')
             return False
         with open(filename, 'r', encoding='utf-8') as ddf:
-            refresh_token = json.load(ddf)['refresh_token']
+            try:
+                refresh_token = json.load(ddf)['refresh_token']
+            except (KeyError, IndexError, TypeError):
+                raise NoDataInFile()
 
         data = {
             'grant_type':'refresh_token',
@@ -315,18 +380,22 @@ class nsLib:
             'client_id':'parent-mobile',
             'client_secret':self.client_secret
         }
-        response = requests.post(
+        response = self.session.post(
             f"{self.url3}/connect/token",
             data=data
         )
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        tokens = {
-                'access_token':response.json()['access_token'],
-                'refresh_token':response.json()['refresh_token'],
-                'expires_in':response.json()['expires_in']
+        try:
+            tmp = response.json()
+            tokens = {
+                'access_token':tmp['access_token'],
+                'refresh_token':tmp['refresh_token'],
+                'expires_in':tmp['expires_in']
             }
+        except (KeyError, IndexError, TypeError):
+            raise NoDataInResponse()
         with open(filename, 'w', encoding='utf_8') as n:
             json.dump(tokens, n)
 
@@ -336,7 +405,10 @@ class nsLib:
         if not os.path.exists(filename):
             raise FileNotFoundError("Файл не найден")
         with open(filename, 'r', encoding='utf-8') as df:
-            access_token = json.load(df)['access_token']
+            try:
+                access_token = json.load(df)['access_token']
+            except (KeyError, IndexError, TypeError):
+                raise NoDataInFile()
 
         return {'authorization':f"Bearer {access_token}"}
     
