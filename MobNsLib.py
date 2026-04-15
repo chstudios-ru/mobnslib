@@ -322,9 +322,11 @@ class nsLib:
 
         return serverId
 
-    def get_week_range(self, pattern, date=None):
-        if date is None:
+    def get_week_range(self, pattern, day=None):
+        if not day:
             date = datetime.now()
+        else:
+            date = datetime.strptime(day, pattern)
 
         start_of_week = date - timedelta(days=date.weekday())
         end_of_week = start_of_week + timedelta(days=6)
@@ -334,13 +336,21 @@ class nsLib:
 
         return start_of_week, end_of_week
 
-    def diary(self, headers, diaryName, startDate=None, studentId=None, endDate=None, day=None):
+    def diary(
+            self,
+            headers,
+            diaryName,
+            startDate=None,
+            studentId=None,
+            endDate=None,
+            day= None,
+            pattern='%Y-%m-%d'):
         log = self.log
 
-        if studentId == None:
+        if not studentId:
             studentId = self.getInfo(headers=headers).get('studentId')
-        if startDate == None and endDate == None:
-            startDate, endDate = self.get_week_range('%Y-%m-%d', day)
+        if not (startDate and endDate):
+            startDate, endDate = self.get_week_range(pattern, day)
 
         response = self.session.get(
             f"{self.url}/api/mobile/classmeetings",
@@ -423,4 +433,29 @@ class nsLib:
         self.log.info(f"{response} {response.url}")
         self.log.debug(f"{response.text}")
         return response.text.replace('"','')
-    
+
+    def getAssignments(self, headers, studentId, diaryName=None, assignmentFile=None, classmeetingId=None, diary=None):
+        if diaryName:
+            with open(diaryName, 'r', encoding='utf-8') as d:
+                diary = json.load(d)
+        
+        if diary:
+            assignIds = []
+            tasks = []
+            for i in diary:
+                temp = i['assignmentId']
+                if temp:
+                    assignIds.extend(temp)
+            
+            return assignIds
+
+        if classmeetingId:
+            self.session.get(
+                f"{self.url}/api/mobile/assignments",
+                params = {
+                    'studentId':studentId,
+                    'classmeetingId':classmeetingId,
+                    'appVersion':self.appVer,
+                    'lng':self.lng
+                }
+            )
