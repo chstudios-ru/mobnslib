@@ -9,7 +9,7 @@ class HTMLTruncateHandler(logging.FileHandler):
         if "<!doctype html>" in msg_lower:
             record.msg = "<!DOCTYPE html>..."
 
-        sensitive_keys = ["classmeetingid", "access", "code=ey"]
+        sensitive_keys = ["access", "code=ey"]
         if any(key in msg_lower for key in sensitive_keys):
             # Проверяем, не обрезали ли мы её уже (на случай длинных цепочек)
             if len(record.msg) > 50:
@@ -434,7 +434,9 @@ class nsLib:
         self.log.debug(f"{response.text}")
         return response.text.replace('"','')
 
-    def getAssignments(self, headers, studentId, diaryName=None, assignmentFile=None, classmeetingId=None, diary=None):
+    def getAssignments(self, headers, studentId, diaryName=None, assignmentFile=None, diary=None):
+        log = self.log
+
         if diaryName:
             with open(diaryName, 'r', encoding='utf-8') as d:
                 diary = json.load(d)
@@ -446,16 +448,23 @@ class nsLib:
                 temp = i['assignmentId']
                 if temp:
                     assignIds.extend(temp)
+            for d in assignIds:
+                response = self.session.get(
+                    f"{self.url}/api/mobile/assignments",
+                    headers=headers,
+                    params = {
+                        'studentId':studentId,
+                        'classmeetingId':d,
+                        'appVersion':self.appVer,
+                        'lng':self.lng
+                    }
+                )
+                self.log.info(f"{response} {response.url}")
+                self.log.debug(f"{response.text}")
+                tasks.append(response.text)
             
-            return assignIds
+            if assignmentFile:
+                with open(assignmentFile, 'w', encoding='utf-8') as fr:
+                    fr.write(tasks)
 
-        if classmeetingId:
-            self.session.get(
-                f"{self.url}/api/mobile/assignments",
-                params = {
-                    'studentId':studentId,
-                    'classmeetingId':classmeetingId,
-                    'appVersion':self.appVer,
-                    'lng':self.lng
-                }
-            )
+            return tasks
