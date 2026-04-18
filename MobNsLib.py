@@ -45,7 +45,7 @@ class nsLib:
         timeout=httpx.Timeout(30.0)
         )
 
-        self.url = url
+        self.url = url.rstrip("/")
         self.url1 = 'https://mobile.ir-tech.ru'
         self.url2 = 'https://esia.gosuslugi.ru'
         self.url3 = 'https://identity.ir-tech.ru'
@@ -123,7 +123,7 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
         
-        if str(response.status_code) == '201':
+        if str(response.status_code) == 201:
             log.info(f"{response} {response.url}")
             log.debug(f"{response.text}")
             log.error("Неправильный логин или пароль")
@@ -444,6 +444,7 @@ class nsLib:
 
     async def getAssignments(self, headers, studentId, diaryName, assignmentFile, diary=None):
         log = self.log
+        limit = 10
 
         with open(diaryName, 'r', encoding='utf-8') as d:
             diary = json.load(d)
@@ -451,9 +452,30 @@ class nsLib:
         if diary:
             assignIds = []
             for day in diary:
-                ids = day.get("assignmentId", [])
-                for val in ids:
-                    assignIds.append(val)
+                id = day.get("classmeetingId", [])
+                if id:
+                    assignIds.append(id)
+        assigns = []
+        for i in range(0, len(assignIds), limit):
+            chunk = assignIds[i : i + limit]
+            response = await self.session.get(
+                f"{self.url}/api/mobile/assignments",
+                headers=headers,
+                params = {
+                    "studentId":studentId,
+                    "classmeetingId":chunk,
+                    "appVersion":self.appVer,
+                    "lng":self.lng
+                }
+            )
+            log.info(f"{response} {response.url}")
+            log.debug(f"{response.text}")
+            try:
+                assigns.extend(response.json())
+            except (KeyError, IndexError, TypeError) as e:
+                log.error("no expected data in response", exc_info=True)
+                raise NoDataInResponse() from e
+            
 
         with open(assignmentFile, 'w', encoding='utf-8') as dtrf:
-            json.dump(assignIds, dtrf, ensure_ascii=False)
+            json.dump(assigns, dtrf, ensure_ascii=False)
