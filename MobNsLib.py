@@ -1,4 +1,4 @@
-import json, os, logging, httpx
+import json, os, logging, httpx, asyncio
 from datetime import datetime, timedelta
 
 class HTMLTruncateHandler(logging.FileHandler):
@@ -445,6 +445,7 @@ class nsLib:
     async def getAssignments(self, headers, studentId, diaryName, assignmentFile, diary=None):
         log = self.log
         limit = 10
+        delay = 0.5
 
         with open(diaryName, 'r', encoding='utf-8') as d:
             diary = json.load(d)
@@ -475,6 +476,10 @@ class nsLib:
             except (KeyError, IndexError, TypeError) as e:
                 log.error("no expected data in response", exc_info=True)
                 raise NoDataInResponse() from e
+            
+            if i + limit < len(assignIds):
+                log.debug(f"Waiting {delay}s before next request...")
+                await asyncio.sleep(delay)
             
 
         with open(assignmentFile, 'w', encoding='utf-8') as dtrf:
