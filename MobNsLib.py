@@ -1,4 +1,4 @@
-import getpass, requests, json, os, logging
+import json, os, logging, httpx
 from datetime import datetime, timedelta
 
 class HTMLTruncateHandler(logging.FileHandler):
@@ -18,39 +18,32 @@ class HTMLTruncateHandler(logging.FileHandler):
 
 class NoDataInResponse(Exception):
     def __init__(self, message="no expected data in response"):
-        # 1. Сначала вызываем логгер
-        nsLib.self.log.error(message, exc_info=True)
-        
-        # 2. Обязательно вызываем конструктор базового класса Exception
         super().__init__(message)
 
 class NoLoginOrPassword(Exception):
     def __init__(self, message="no login or password"):
-        # 1. Сначала вызываем логгер
-        nsLib.self.log.error(message, exc_info=True)
-        
-        # 2. Обязательно вызываем конструктор базового класса Exception
         super().__init__(message)
 
 class UnexpectedResponse(Exception):
     def __init__(self, message="unexpected response"):
-        # 1. Сначала вызываем логгер
-        nsLib.self.log.error(message, exc_info=True)
-        
-        # 2. Обязательно вызываем конструктор базового класса Exception
         super().__init__(message)
 
 class NoDataInFile(Exception):
     def __init__(self, message="an error occurred while extracting data from a file"):
-        # 1. Сначала вызываем логгер
-        nsLib.self.log.error(message, exc_info=True)
-        
-        # 2. Обязательно вызываем конструктор базового класса Exception
+        super().__init__(message)
+
+class WrongLoginOrPassword(Exception):
+    def __init__(self, message="wrong login or password"):
         super().__init__(message)
 
 class nsLib:
     def __init__(self, url, logName=None, log_level=None):
-        self.session = requests.Session()
+        self.session = httpx.AsyncClient(
+            headers={
+                "User-Agent": "okhttp/4.9.2"
+            },
+        timeout=httpx.Timeout(30.0)
+        )
 
         self.url = url
         self.url1 = 'https://mobile.ir-tech.ru'
@@ -80,11 +73,11 @@ class nsLib:
             logger.addHandler(file_handler)
             self.log.info(f"Log_level {log_level}")
 
-    def esiaLogin(self, login=None, password=None):
+    async def esiaLogin(self, login=None, password=None):
         log = self.log
 
         data = {'mobile':'1'}
-        response = self.session.post(
+        response = await self.session.post(
             f"{self.url}/webapi/auth/login-state",
             data=data
         )
@@ -93,7 +86,7 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        response = self.session.get(
+        response = await self.session.get(
             f"{self.url}/webapi/sso/esia/crosslogin",
             params={
                 'loginState':self.loginState,
@@ -106,7 +99,7 @@ class nsLib:
 
         pattern = '%d-%m-%Y_%H-%M-%S'
         ondate = datetime.now().strftime(pattern)
-        response = self.session.get(
+        response = await self.session.get(
             f"{self.url2}/rs/dscl",
             params={
             'ondate':ondate
@@ -117,9 +110,10 @@ class nsLib:
         
         if not (login or password):
             log.error("No login or password")
-            raise 
+            log.error("no login or password", exc_info=True)
+            raise NoLoginOrPassword()
 
-        response = self.session.post(
+        response = await self.session.post(
             f"{self.url2}/aas/oauth2/api/login/", 
             json={
                 'login':login,
@@ -131,8 +125,9 @@ class nsLib:
         
         if str(response.status_code) == '201':
             log.info(f"{response} {response.url}")
-            log.error(f"Неправильный логин или пароль {response.text}")
-            raise ValueError()
+            log.debug(f"{response.text}")
+            log.error("Неправильный логин или пароль")
+            raise WrongLoginOrPassword()
         if response.json().get('action') == 'ENTER_MFA':
             try:
                 tmp = response.json()
@@ -142,25 +137,27 @@ class nsLib:
                     'desc':tmp['mfa_details']['type'],
                     'details':tmp['mfa_details']
                 }
-            except (KeyError, IndexError, TypeError):
-                raise NoDataInResponse()
+            except (KeyError, IndexError, TypeError) as e:
+                log.error("no expected data in response", exc_info=True)
+                raise NoDataInResponse() from e
             
             return sth
         
-        if response.get('action') == 'DONE':
+        if response.json().get('action') == 'DONE':
             try:
                 tmp = response.json()
                 self.redir_url = tmp['redirect_url']
                 rnd = {'status':tmp['action']}
-            except (KeyError, IndexError, TypeError):
-                raise NoDataInResponse()
+            except (KeyError, IndexError, TypeError) as e:
+                log.error("no expected data in response", exc_info=True)
+                raise NoDataInResponse() from e
 
             return rnd
 
-        log.error(f"Unexpected response")
-        raise 
+        log.error("unexpected response", exc_info=True)
+        raise UnexpectedResponse()
         
-    def esiaMFA(self, mfa_code):
+    async def esiaMFA(self, mfa_code):
         log = self.log
 
         url = {
@@ -169,7 +166,7 @@ class nsLib:
             'MAX':'otp-max'
         }
 
-        response = self.session.post(
+        response = await self.session.post(
             f"{self.url2}/aas/oauth2/api/login/{url[self.mfa_type_asked]}/verify",
             params={
                 'code':mfa_code
@@ -180,7 +177,7 @@ class nsLib:
 
         if response.json().get("action") == "MAX_QUIZ":
             print(response.text)
-            response = self.session.post(
+            response = await self.session.post(
                 f"{self.url2}/aas/oauth2/api/login/quiz-max/skip"
             )
             log.info(f"{response} {response.url}")
@@ -189,19 +186,20 @@ class nsLib:
         try:
             self.redir_url = response.json().get('redirect_url')
             rnd = {'status':response.json().get('action')}
-        except (KeyError, IndexError, TypeError):
-            raise NoDataInResponse()
+        except (KeyError, IndexError, TypeError) as e:
+            log.error("no expected data in response", exc_info=True)
+            raise NoDataInResponse() from e
 
         return rnd
             
-    def esiaLoginEnd(self, filename=None):
+    async def esiaLoginEnd(self, filename=None):
         log = self.log
 
-        response = self.session.get(self.redir_url)
+        response = await self.session.get(self.redir_url)
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        response = self.session.get(
+        response = await self.session.get(
             f"{self.url}/webapi/sso/esia/account-info", 
             params={'loginState':self.loginState}
         )
@@ -216,9 +214,10 @@ class nsLib:
                 'LoginType':'8',
                 'lscope':tmp['users'][0]['id']
             }
-        except (KeyError, IndexError, TypeError):
-            raise NoDataInResponse()
-        response = self.session.post(
+        except (KeyError, IndexError, TypeError) as e:
+            log.error("no expected data in response", exc_info=True)
+            raise NoDataInResponse() from e
+        response = await self.session.post(
             f"{self.url}/webapi/auth/login",
             data=data)
         log.info(f"{response} {response.url}")
@@ -226,9 +225,10 @@ class nsLib:
 
         try:
             headers = {'at':response.json()['at']}
-        except (KeyError, IndexError, TypeError):
-            raise NoDataInResponse()
-        response = self.session.get(
+        except (KeyError, IndexError, TypeError) as e:
+            log.error("no expected data in response", exc_info=True)
+            raise NoDataInResponse() from e
+        response = await self.session.get(
             f"{self.url}/webapi/mysettings/mobile/pincode",
             headers=headers
         )
@@ -242,9 +242,10 @@ class nsLib:
                 'client_id':'parent-mobile',
                 'client_secret':self.client_secret
             }
-        except (KeyError, IndexError, TypeError):
-            raise NoDataInResponse()
-        response = self.session.post(
+        except (KeyError, IndexError, TypeError) as e:
+            log.error("no expected data in response", exc_info=True)
+            raise NoDataInResponse() from e
+        response = await self.session.post(
             f"{self.url3}/connect/token",
             data=data
         )
@@ -258,10 +259,11 @@ class nsLib:
                 'refresh_token':tmp['refresh_token'],
                 'expires_in':tmp['expires_in']
             }
-        except (KeyError, IndexError, TypeError):
-            raise NoDataInResponse()
+        except (KeyError, IndexError, TypeError) as e:
+            log.error("no expected data in response", exc_info=True)
+            raise NoDataInResponse() from e
 
-        response = self.session.get(
+        response = await self.session.get(
             f"{self.url}/logout",
             headers=headers
         )
@@ -274,10 +276,10 @@ class nsLib:
 
         return {'authorization':f"Bearer {tokens.get('access_token')}"}
 
-    def getInfo(self, headers):
+    async def getInfo(self, headers):
         log = self.log
 
-        response = self.session.get(
+        response = await self.session.get(
             f"{self.url}/api/mobile/users",
             headers=headers,
             params={
@@ -297,15 +299,16 @@ class nsLib:
                 'studentId':tmp[0]['id'],
                 'classId':tmp[0]['organizations'][0]['classes'][0]['classId']
             }
-        except (KeyError, IndexError, TypeError):
-            raise NoDataInResponse()
+        except (KeyError, IndexError, TypeError) as e:
+            log.error("no expected data in response", exc_info=True)
+            raise NoDataInResponse() from e
 
         return info
     
-    def getServerId(self, headers):
+    async def getServerId(self, headers):
         log = self.log
 
-        response = self.session.get(
+        response = await self.session.get(
             f"{self.url3}/users/endpoints", 
             headers=headers,
             params={
@@ -315,8 +318,9 @@ class nsLib:
         )
         try:
             serverId = response.json()[0].get('serverId')
-        except (KeyError, IndexError, TypeError):
-            raise NoDataInResponse()
+        except (KeyError, IndexError, TypeError) as e:
+            log.error("no expected data in response", exc_info=True)
+            raise NoDataInResponse() from e
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
@@ -336,7 +340,7 @@ class nsLib:
 
         return start_of_week, end_of_week
 
-    def diary(
+    async def diary(
             self,
             headers,
             diaryName,
@@ -348,11 +352,12 @@ class nsLib:
         log = self.log
 
         if not studentId:
-            studentId = self.getInfo(headers=headers).get('studentId')
+            info = await self.getInfo(headers=headers)
+            studentId = info.get('studentId')
         if not (startDate and endDate):
             startDate, endDate = self.get_week_range(pattern, day)
 
-        response = self.session.get(
+        response = await self.session.get(
             f"{self.url}/api/mobile/classmeetings",
             params={
                 'studentIds':studentId,
@@ -372,7 +377,7 @@ class nsLib:
         
         return response.json()
 
-    def tokenRefresh(self, filename):
+    async def tokenRefresh(self, filename):
         log = self.log
 
         if not os.path.exists(filename):
@@ -381,7 +386,8 @@ class nsLib:
         with open(filename, 'r', encoding='utf-8') as ddf:
             try:
                 refresh_token = json.load(ddf)['refresh_token']
-            except (KeyError, IndexError, TypeError):
+            except (KeyError, IndexError, TypeError) as e:
+                log.error("an error occurred while extracting data from a file", exc_info=True)
                 raise NoDataInFile()
 
         data = {
@@ -390,7 +396,7 @@ class nsLib:
             'client_id':'parent-mobile',
             'client_secret':self.client_secret
         }
-        response = self.session.post(
+        response = await self.session.post(
             f"{self.url3}/connect/token",
             data=data
         )
@@ -404,26 +410,28 @@ class nsLib:
                 'refresh_token':tmp['refresh_token'],
                 'expires_in':tmp['expires_in']
             }
-        except (KeyError, IndexError, TypeError):
-            raise NoDataInResponse()
+        except (KeyError, IndexError, TypeError) as e:
+            log.error("no expected data in response", exc_info=True)
+            raise NoDataInResponse() from e
         with open(filename, 'w', encoding='utf_8') as n:
             json.dump(tokens, n)
 
         return {'authorization':f"Bearer {tokens.get('access_token')}"}
 
-    def getToken(self, filename):
+    async def getToken(self, filename):
         if not os.path.exists(filename):
             raise FileNotFoundError("Файл не найден")
         with open(filename, 'r', encoding='utf-8') as df:
             try:
                 access_token = json.load(df)['access_token']
-            except (KeyError, IndexError, TypeError):
+            except (KeyError, IndexError, TypeError) as e:
+                self.log.error("an error occurred while extracting data from a file", exc_info=True)
                 raise NoDataInFile()
 
         return {'authorization':f"Bearer {access_token}"}
     
-    def getVer(self):
-        response = self.session.get(
+    async def getVer(self):
+        response = await self.session.get(
             f"{self.url1}/api/v1/mobile/parent/app-versions/published",
             params={
                 'appVersion':self.appVer,
@@ -434,37 +442,18 @@ class nsLib:
         self.log.debug(f"{response.text}")
         return response.text.replace('"','')
 
-    def getAssignments(self, headers, studentId, diaryName=None, assignmentFile=None, diary=None):
+    async def getAssignments(self, headers, studentId, diaryName, assignmentFile, diary=None):
         log = self.log
 
-        if diaryName:
-            with open(diaryName, 'r', encoding='utf-8') as d:
-                diary = json.load(d)
+        with open(diaryName, 'r', encoding='utf-8') as d:
+            diary = json.load(d)
         
         if diary:
             assignIds = []
-            tasks = []
-            for i in diary:
-                temp = i['assignmentId']
-                if temp:
-                    assignIds.extend(temp)
-            for d in assignIds:
-                response = self.session.get(
-                    f"{self.url}/api/mobile/assignments",
-                    headers=headers,
-                    params = {
-                        'studentId':studentId,
-                        'classmeetingId':d,
-                        'appVersion':self.appVer,
-                        'lng':self.lng
-                    }
-                )
-                self.log.info(f"{response} {response.url}")
-                self.log.debug(f"{response.text}")
-                tasks.append(response.text)
-            
-            if assignmentFile:
-                with open(assignmentFile, 'w', encoding='utf-8') as fr:
-                    fr.write(tasks)
+            for day in diary:
+                ids = day.get("assignmentId", [])
+                for val in ids:
+                    assignIds.append(val)
 
-            return tasks
+        with open(assignmentFile, 'w', encoding='utf-8') as dtrf:
+            json.dump(assignIds, dtrf, ensure_ascii=False)
