@@ -40,9 +40,11 @@ class nsLib:
     def __init__(self, url, logName=None, log_level=None):
         self.session = httpx.AsyncClient(
             headers={
-                "User-Agent": "okhttp/4.9.2"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             },
-        timeout=httpx.Timeout(30.0)
+            timeout=httpx.Timeout(30.0),
+            follow_redirects=True,
+            cookies=httpx.Cookies()
         )
 
         self.url = url.rstrip("/")
@@ -176,7 +178,6 @@ class nsLib:
         log.debug(f"{response.text}")
 
         if response.json().get("action") == "MAX_QUIZ":
-            print(response.text)
             response = await self.session.post(
                 f"{self.url2}/aas/oauth2/api/login/quiz-max/skip"
             )
@@ -184,8 +185,9 @@ class nsLib:
             log.debug(f"{response.text}")
 
         try:
-            self.redir_url = response.json().get('redirect_url')
-            rnd = {'status':response.json().get('action')}
+            temp = response.json()
+            self.redir_url = temp['redirect_url']
+            rnd = {'status':temp['action']}
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
@@ -519,3 +521,6 @@ class nsLib:
                 atfile.write(response.text)
 
         return save
+
+    async def getSchoolYear(self):
+        log = self.log

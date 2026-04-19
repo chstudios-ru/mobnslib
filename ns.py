@@ -45,7 +45,7 @@ url1_ver = f"{url1}/api/v1/mobile/parent/app-versions/published?appVersion={appV
 
 url2_1 = url2 + "/rs/dscl?ondate="
 url2_2 = url2 + "/aas/oauth2/api/login"
-url2_3 = url2_2 + "/totp/verify?code="
+url2_3 = url2_2 + "/otp/verify?code="
 
 url3_1 = url3 + "/connect/token"
 url3_2 = url3 + "/users/endpoints?appVersion=" + appVer + lng
@@ -86,13 +86,20 @@ def esiaLogin():
         response = session.post(url2_3+mfa_code)
         print(response)
 
+        if response.json().get("action") == "MAX_QUIZ":
+            print(response.text)
+            response = session.post(
+                f"{url2}/aas/oauth2/api/login/quiz-max/skip"
+            )
+            print(response)
+
         tmp = response.json().get('redirect_url')
         response = session.get(tmp)
-        print(response)
+        print(response.text)
 
         response = session.get(url_3+loginState)
         tmp = response.json()
-        print(response)
+        print(response.text)
 
         id = tmp['users'][0]['id']
         data = {
