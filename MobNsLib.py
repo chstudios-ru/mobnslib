@@ -484,3 +484,38 @@ class nsLib:
 
         with open(assignmentFile, 'w', encoding='utf-8') as dtrf:
             json.dump(assigns, dtrf, ensure_ascii=False)
+
+    async def loadAttachment(self, headers, assignmentId, save=False, attachName=None):
+        log = self.log
+
+        response = await self.session.get(
+            f"{self.url}/api/mobile/attachments",
+            headers=headers,
+            params = {
+                "assignmentId":assignmentId,
+                "appVersion":self.appVer,
+                "lng":self.lng
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        save = response.json()
+        if save:
+            try:
+                filename = save[0]["attachmentId"]
+                if not attachName:
+                    attachName = save[0]['fileName']
+            except (KeyError, IndexError, TypeError) as e:
+                    log.error("no expected data in response", exc_info=True)
+                    raise NoDataInResponse() from e
+            response = await self.session.get(
+                f"{self.url}/api/mobile/attachments/{filename}",
+                headers=headers
+            )
+            log.info(f"{response} {response.url}")
+
+            with open(attachName, 'w', encoding='utf-8') as atfile:
+                atfile.write(response.text)
+
+        return save
