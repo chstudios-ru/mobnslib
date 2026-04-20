@@ -502,7 +502,7 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        save = response.json()
+        temp = response.json()
         if save:
             try:
                 filename = save[0]["attachmentId"]
@@ -520,12 +520,12 @@ class nsLib:
             with open(attachName, 'w', encoding='utf-8') as atfile:
                 atfile.write(response.text)
 
-        return save
+        return temp
 
     async def getSchoolYear(self, headers, studentId, fileName):
         log = self.log
 
-        response = self.session.get(
+        response = await self.session.get(
             f"{self.url}/api/mobile/education",
              headers=headers,
              params = {
@@ -538,4 +538,4 @@ class nsLib:
         log.debug(f"{response.text}")
 
         with open(fileName, 'w', encoding='utf-8') as syf:
-            json.dump(response.text, syf, ensure_ascii=False)
+            json.dump(response.json(), syf, ensure_ascii=False)
