@@ -522,5 +522,20 @@ class nsLib:
 
         return save
 
-    async def getSchoolYear(self):
+    async def getSchoolYear(self, headers, studentId, fileName):
         log = self.log
+
+        response = self.session.get(
+            f"{self.url}/api/mobile/education",
+             headers=headers,
+             params = {
+                 'studentId':studentId,
+                 'appVersion':self.appVer,
+                 'lng':self.lng
+             }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        with open(fileName, 'w', encoding='utf-8') as syf:
+            json.dump(response.text, syf, ensure_ascii=False)
