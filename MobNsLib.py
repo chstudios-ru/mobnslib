@@ -522,7 +522,7 @@ class nsLib:
 
         return temp
 
-    async def getSchoolYear(self, headers, studentId, fileName):
+    async def getSchoolYear(self, headers, studentId, fileName=None):
         log = self.log
 
         response = await self.session.get(
@@ -537,5 +537,82 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        with open(fileName, 'w', encoding='utf-8') as syf:
-            json.dump(response.json(), syf, ensure_ascii=False)
+        if fileName:
+            with open(fileName, 'w', encoding='utf-8') as syf:
+                json.dump(response.json(), syf, ensure_ascii=False)
+        return response.json()
+    
+    async def getLessons(self, headers, studentId, schoolYearId, fileName=None, diaryName=None):
+        log = self.log
+
+        response = await self.session.get(
+            f"{self.url}/api/mobile/subjects",
+             headers=headers,
+             params = {
+                 'studentId':studentId,
+                 'schoolYearId':schoolYearId,
+                 'appVersion':self.appVer,
+                 'lng':self.lng
+             }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        if fileName:
+            with open(fileName, 'w', encoding='utf-8') as syf:
+                json.dump(response.json(), syf, ensure_ascii=False)
+
+        if diaryName:
+            with open(diaryName, 'r', encoding='utf-8') as d:
+                diary = json.load(d)
+            for day in diary:
+                for lesson in response.json():
+                    if lesson['id'] == day.get('subjectId'):
+                        day['subject'] = lesson['name']
+                        break
+            with open(diaryName, 'w', encoding='utf-8') as d:
+                json.dump(diary, d, ensure_ascii=False)
+
+        return response.json()
+    
+    async def getTotals(self, headers, studentId, schoolYearId, fileName=None):
+        log = self.log
+
+        response = await self.session.get(
+            f"{self.url}/api/mobile/totals",
+             headers=headers,
+             params = {
+                 'studentId':studentId,
+                 'schoolYearId':schoolYearId,
+                 'appVersion':self.appVer,
+                 'lng':self.lng
+             }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        if fileName:
+            with open(fileName, 'w', encoding='utf-8') as syf:
+                json.dump(response.json(), syf, ensure_ascii=False)
+        return response.json()
+    
+    async def getTerms(self, headers, studentId, schoolYearId, fileName=None):
+        log = self.log
+
+        response = await self.session.get(
+            f"{self.url}/api/mobile/terms",
+             headers=headers,
+             params = {
+                 'studentId':studentId,
+                 'schoolYearId':schoolYearId,
+                 'appVersion':self.appVer,
+                 'lng':self.lng
+             }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        if fileName:
+            with open(fileName, 'w', encoding='utf-8') as syf:
+                json.dump(response.json(), syf, ensure_ascii=False)
+        return response.json()
