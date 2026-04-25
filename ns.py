@@ -196,8 +196,6 @@ def nsLogin():
     if os.path.exists('token.txt'):
         with open('token.txt', 'r', encoding='utf_8') as n:
             access_token = n.read()
-        # with open('cookies.pkl', 'rb') as cookies:
-        #     session.cookies.update(pickle.load(cookies))
     else:
         access_token = esiaLogin()
 
