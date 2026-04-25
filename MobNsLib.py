@@ -274,7 +274,7 @@ class nsLib:
 
         if filename:
             async with aiofiles.open(filename, 'w', encoding='utf_8') as n:
-                await n.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
+                await n.write(json.dumps(tokens, ensure_ascii=False, indent=4))
 
         return {'authorization':f"Bearer {tokens.get('access_token')}"}
 
