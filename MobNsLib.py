@@ -485,7 +485,7 @@ class nsLib:
             
 
         async with aiofiles.open(assignmentFile, 'w', encoding='utf-8') as dtrf:
-            await dtrf.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
+            await dtrf.write(json.dumps(assigns, ensure_ascii=False, indent=4))
 
     async def loadAttachment(self, headers, assignmentId, save=False, attachName=None):
         log = self.log
