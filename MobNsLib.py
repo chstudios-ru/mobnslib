@@ -606,9 +606,9 @@ class nsLib:
         data = response.json()
         if fileName:
             async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                await syf.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
-        return response.json()
-    
+                await syf.write(json.dumps(data, ensure_ascii=False, indent=4))
+        return data
+
     async def getTerms(self, headers, studentId, schoolYearId, fileName=None):
         log = self.log
 
@@ -693,3 +693,22 @@ class nsLib:
     
     async def getAllEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
         return await self.Events(['HomeworkInfo', 'ResultInfo', 'TermTotalInfo', 'YearTotalInfo'], headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
+    
+    async def getServerList(self, fileName=None):
+        log = self.log
+
+        response = await self.session.get(
+            f"{self.url1}/api/v1/mobile/parent/end-points",
+            params={
+                'appVersion':self.appVer,
+                'lng':self.lng
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+        
+        data = response.json()
+        if fileName:
+            async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
+                await syf.write(json.dumps(data, ensure_ascii=False, indent=4))
+        return data
