@@ -57,9 +57,9 @@ class nsLib:
         self.url1 = 'https://mobile.ir-tech.ru'
         self.url2 = 'https://esia.gosuslugi.ru'
         self.url3 = 'https://identity.ir-tech.ru'
+        self.client_secret = '04064338-13df-4747-8dea-69849f9ecdf0'
         self.appVer = '1.3.9'
         self.lng = "ru"
-        self.client_secret = '04064338-13df-4747-8dea-69849f9ecdf0'
 
         logger = logging.getLogger("MyBigScript")
         logger.setLevel(logging.DEBUG)
@@ -700,22 +700,20 @@ class nsLib:
     async def getAllEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
         return await self.Events(['HomeworkInfo', 'ResultInfo', 'TermTotalInfo', 'YearTotalInfo'], headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
     
-    async def getServerList(self, fileName=None):
-        log = self.log
-
-        response = await self.session.get(
-            f"{self.url1}/api/v1/mobile/parent/end-points",
-            params={
-                'appVersion':self.appVer,
-                'lng':self.lng
-            }
-        )
-        log.info(f"{response} {response.url}")
-        log.debug(f"{response.text}")
-        
-        data = response.json()
-        if fileName:
-            async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                await syf.write(json.dumps(data, ensure_ascii=False, indent=4))
-        return data
+    @staticmethod
+    async def getServerList(fileName=None):
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            response = await client.get(
+                f"https://mobile.ir-tech.ru/api/v1/mobile/parent/end-points",
+                params={
+                    'appVersion':'1.3.9',
+                    'lng':'ru'
+                }
+            )
+            
+            data = response.json()
+            if fileName:
+                async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
+                    await syf.write(json.dumps(data, ensure_ascii=False, indent=4))
+            return data
 
