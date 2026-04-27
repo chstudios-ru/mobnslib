@@ -47,7 +47,13 @@ class nsLib:
             cookies=httpx.Cookies()
         )
 
-        self.url = url.rstrip("/")
+        url = url.rstrip("/")
+        if "/api/mobile" in url:
+            self.api = f"{url}/"
+            url = url.replace("api/mobile", "")
+        else:
+            self.api = f"{url}/api/mobile/"
+        self.url = f"{url}/"
         self.url1 = 'https://mobile.ir-tech.ru'
         self.url2 = 'https://esia.gosuslugi.ru'
         self.url3 = 'https://identity.ir-tech.ru'
@@ -80,7 +86,7 @@ class nsLib:
 
         data = {'mobile':'1'}
         response = await self.session.post(
-            f"{self.url}/webapi/auth/login-state",
+            f"{self.url}webapi/auth/login-state",
             data=data
         )
         self.loginState = response.text
@@ -89,7 +95,7 @@ class nsLib:
         log.debug(f"{response.text}")
 
         response = await self.session.get(
-            f"{self.url}/webapi/sso/esia/crosslogin",
+            f"{self.url}webapi/sso/esia/crosslogin",
             params={
                 'loginState':self.loginState,
                 'esia_permissions':'1',
@@ -202,7 +208,7 @@ class nsLib:
         log.debug(f"{response.text}")
 
         response = await self.session.get(
-            f"{self.url}/webapi/sso/esia/account-info", 
+            f"{self.url}webapi/sso/esia/account-info", 
             params={'loginState':self.loginState}
         )
         log.info(f"{response} {response.url}")
@@ -220,7 +226,7 @@ class nsLib:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
         response = await self.session.post(
-            f"{self.url}/webapi/auth/login",
+            f"{self.url}webapi/auth/login",
             data=data)
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
@@ -231,7 +237,7 @@ class nsLib:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
         response = await self.session.get(
-            f"{self.url}/webapi/mysettings/mobile/pincode",
+            f"{self.url}webapi/mysettings/mobile/pincode",
             headers=headers
         )
         log.info(f"{response} {response.url}")
@@ -266,7 +272,7 @@ class nsLib:
             raise NoDataInResponse() from e
 
         response = await self.session.get(
-            f"{self.url}/logout",
+            f"{self.url}logout",
             headers=headers
         )
         log.info(f"{response} {response.url}")
@@ -282,7 +288,7 @@ class nsLib:
         log = self.log
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/users",
+            f"{self.api}users",
             headers=headers,
             params={
                 'v':'2',
@@ -360,7 +366,7 @@ class nsLib:
             startDate, endDate = self.get_week_range(pattern, day)
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/classmeetings",
+            f"{self.api}classmeetings",
             params={
                 'studentIds':studentId,
                 'startDate':startDate,
@@ -462,7 +468,7 @@ class nsLib:
         for i in range(0, len(assignIds), limit):
             chunk = assignIds[i : i + limit]
             response = await self.session.get(
-                f"{self.url}/api/mobile/assignments",
+                f"{self.api}assignments",
                 headers=headers,
                 params = {
                     "studentId":studentId,
@@ -491,7 +497,7 @@ class nsLib:
         log = self.log
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/attachments",
+            f"{self.api}attachments",
             headers=headers,
             params = {
                 "assignmentId":assignmentId,
@@ -513,7 +519,7 @@ class nsLib:
 
         if save:
             response = await self.session.get(
-                f"{self.url}/api/mobile/attachments/{attachmentId}",
+                f"{self.api}attachments/{attachmentId}",
                 headers=headers
             )
             log.info(f"{response} {response.url}")
@@ -522,14 +528,14 @@ class nsLib:
                 atfile.write(response.text)
 
         else:
-            temp.append({'url':f"{self.url}/api/mobile/attachments/{attachmentId}"})
+            temp.append({'url':f"{self.api}attachments/{attachmentId}"})
         return temp
 
     async def getSchoolYear(self, headers, studentId, fileName=None):
         log = self.log
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/education",
+            f"{self.api}education",
              headers=headers,
              params = {
                  'studentId':studentId,
@@ -554,7 +560,7 @@ class nsLib:
         log = self.log
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/subjects",
+            f"{self.api}subjects",
              headers=headers,
              params = {
                  'studentId':studentId,
@@ -591,7 +597,7 @@ class nsLib:
         log = self.log
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/totals",
+            f"{self.api}totals",
              headers=headers,
              params = {
                  'studentId':studentId,
@@ -613,7 +619,7 @@ class nsLib:
         log = self.log
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/terms",
+            f"{self.api}terms",
              headers=headers,
              params = {
                  'studentId':studentId,
@@ -634,7 +640,7 @@ class nsLib:
         log = self.log
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/announcements",
+            f"{self.api}announcements",
              headers=headers,
              params = {
                  'studentId':studentId,
@@ -658,7 +664,7 @@ class nsLib:
             offset = 0
 
         response = await self.session.get(
-            f"{self.url}/api/mobile/period-events",
+            f"{self.api}period-events",
              headers=headers,
              params = {
                  'studentId':studentId,
@@ -712,3 +718,4 @@ class nsLib:
             async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
                 await syf.write(json.dumps(data, ensure_ascii=False, indent=4))
         return data
+
