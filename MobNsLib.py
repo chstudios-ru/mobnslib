@@ -700,6 +700,27 @@ class nsLib:
     async def getAllEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
         return await self.Events(['HomeworkInfo', 'ResultInfo', 'TermTotalInfo', 'YearTotalInfo'], headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
     
+    async def getMailUnreadCount(self, headers, studentId):
+        log = self.log
+
+        response = await self.session.get(
+            f"{self.api}mail/messages/unread-count",
+            headers=headers,
+            params={
+                'userId':studentId,
+                'appVersion':self.appVer,
+                'lng':self.lng
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        return response.text
+
+    async def getMails(self, headers):
+        log = self.log
+        # Ох зря я сюда полез...
+
     @staticmethod
     async def getServerList(fileName=None):
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
