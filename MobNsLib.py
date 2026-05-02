@@ -164,7 +164,7 @@ class nsLib:
 
         log.error("unexpected response", exc_info=True)
         raise UnexpectedResponse()
-        
+
     async def esiaMFA(self, mfa_code):
         log = self.log
 
@@ -199,7 +199,7 @@ class nsLib:
             raise NoDataInResponse() from e
 
         return rnd
-            
+
     async def esiaLoginEnd(self, filename=None):
         log = self.log
 
@@ -312,7 +312,7 @@ class nsLib:
             raise NoDataInResponse() from e
 
         return info
-    
+
     async def getServerId(self, headers):
         log = self.log
 
@@ -437,7 +437,7 @@ class nsLib:
                 raise NoDataInFile()
 
         return {'authorization':f"Bearer {access_token}"}
-    
+
     async def getVer(self):
         response = await self.session.get(
             f"{self.url1}/api/v1/mobile/parent/app-versions/published",
@@ -555,7 +555,7 @@ class nsLib:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
         return year
-    
+
     async def getSubjects(self, headers, studentId, schoolYearId, fileName=None, diaryName=None):
         log = self.log
 
@@ -592,7 +592,7 @@ class nsLib:
                 await syf.write(json.dumps(subjects, ensure_ascii=False, indent=4))
 
         return subjects
-    
+
     async def getTotals(self, headers, studentId, schoolYearId, fileName=None):
         log = self.log
 
@@ -655,7 +655,7 @@ class nsLib:
             async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
                 await syf.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
         return response.json()
-    
+
     async def Events(self, event_type, headers, studentId, periodDays, subjectGroupIds, fileName=None, limit=None, offset=None):
         log = self.log
         if not limit:
@@ -684,7 +684,7 @@ class nsLib:
             async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
                 await syf.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
         return response.json()
-    
+
     async def getHomeworkInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
         return await self.Events('HomeworkInfo', headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
 
@@ -696,10 +696,10 @@ class nsLib:
 
     async def getYearTotalInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
         return await self.Events('YearTotalInfo', headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
-    
+
     async def getAllEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
         return await self.Events(['HomeworkInfo', 'ResultInfo', 'TermTotalInfo', 'YearTotalInfo'], headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
-    
+
     async def getMailUnreadCount(self, headers, studentId):
         log = self.log
 
