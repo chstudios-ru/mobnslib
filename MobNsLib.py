@@ -131,7 +131,7 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
         
-        if str(response.status_code) == 201:
+        if response.status_code == 201:
             log.info(f"{response} {response.url}")
             log.debug(f"{response.text}")
             log.error("Неправильный логин или пароль")
