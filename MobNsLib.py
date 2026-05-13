@@ -186,7 +186,7 @@ class nsLib:
         log.error("unexpected response", exc_info=True)
         raise UnexpectedResponse()
 
-    async def esiaMFA(self, mfa_code, mfa_type,LoginCookies):
+    async def esiaMFA(self, mfa_code, mfa_type, LoginCookies):
         session = httpx.AsyncClient(
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
