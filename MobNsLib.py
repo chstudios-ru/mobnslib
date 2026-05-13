@@ -1,5 +1,8 @@
 import json, os, logging, httpx, asyncio, aiofiles
+import redis.asyncio as redis
 from datetime import datetime, timedelta
+
+from requests import session
 
 class HTMLTruncateHandler(logging.FileHandler):
     """Специальный обработчик для файла, который режет HTML"""
@@ -40,11 +43,10 @@ class nsLib:
     def __init__(self, url, logName=None, log_level=None):
         self.session = httpx.AsyncClient(
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
             },
             timeout=httpx.Timeout(30.0),
-            follow_redirects=True,
-            cookies=httpx.Cookies()
+            follow_redirects=True
         )
 
         url = url.rstrip("/")
@@ -82,10 +84,18 @@ class nsLib:
             self.log.info(f"Log_level {log_level}")
 
     async def esiaLogin(self, login=None, password=None):
+        session = httpx.AsyncClient(
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
+            timeout=httpx.Timeout(30.0),
+            follow_redirects=True,
+            cookies=httpx.Cookies()
+        )
         log = self.log
 
         data = {'mobile':'1'}
-        response = await self.session.post(
+        response = await session.post(
             f"{self.url}webapi/auth/login-state",
             data=data
         )
@@ -94,7 +104,7 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        response = await self.session.get(
+        response = await session.get(
             f"{self.url}webapi/sso/esia/crosslogin",
             params={
                 'loginState':self.loginState,
@@ -107,7 +117,7 @@ class nsLib:
 
         pattern = '%d-%m-%Y_%H-%M-%S'
         ondate = datetime.now().strftime(pattern)
-        response = await self.session.get(
+        response = await session.get(
             f"{self.url2}/rs/dscl",
             params={
             'ondate':ondate
@@ -121,7 +131,7 @@ class nsLib:
             log.error("no login or password", exc_info=True)
             raise NoLoginOrPassword()
 
-        response = await self.session.post(
+        response = await session.post(
             f"{self.url2}/aas/oauth2/api/login/", 
             json={
                 'login':login,
@@ -130,10 +140,17 @@ class nsLib:
         )
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
+        cookies = []
+        for cookie in session.cookies.jar:
+            cookies.append({
+                "name": cookie.name,
+                "value": cookie.value,
+                "domain": cookie.domain,
+                "path": cookie.path,
+            })
+        await session.aclose()
         
         if response.status_code == 201:
-            log.info(f"{response} {response.url}")
-            log.debug(f"{response.text}")
             log.error("Неправильный логин или пароль")
             raise WrongLoginOrPassword()
         if response.json().get('action') == 'ENTER_MFA':
@@ -143,7 +160,8 @@ class nsLib:
                 sth = {
                     'status':tmp['action'],
                     'desc':tmp['mfa_details']['type'],
-                    'details':tmp['mfa_details']
+                    'details':tmp['mfa_details'],
+                    'cookies':cookies
                 }
             except (KeyError, IndexError, TypeError) as e:
                 log.error("no expected data in response", exc_info=True)
@@ -154,8 +172,11 @@ class nsLib:
         if response.json().get('action') == 'DONE':
             try:
                 tmp = response.json()
-                self.redir_url = tmp['redirect_url']
-                rnd = {'status':tmp['action']}
+                rnd = {
+                    'status':tmp['action'],
+                    'redirect_url':tmp['redirect_url'],
+                    'cookies':cookies
+                }
             except (KeyError, IndexError, TypeError) as e:
                 log.error("no expected data in response", exc_info=True)
                 raise NoDataInResponse() from e
@@ -165,8 +186,18 @@ class nsLib:
         log.error("unexpected response", exc_info=True)
         raise UnexpectedResponse()
 
-    async def esiaMFA(self, mfa_code):
+    async def esiaMFA(self, mfa_code, mfa_type,LoginCookies):
+        session = httpx.AsyncClient(
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
+            timeout=httpx.Timeout(30.0),
+            follow_redirects=True,
+            cookies=httpx.Cookies()
+        )
         log = self.log
+        for c in LoginCookies:
+            session.cookies.set(c['name'], c['value'], domain=c['domain'], path=c['path'])
 
         url = {
             'TTP':'totp',
@@ -174,8 +205,8 @@ class nsLib:
             'MAX':'otp-max'
         }
 
-        response = await self.session.post(
-            f"{self.url2}/aas/oauth2/api/login/{url[self.mfa_type_asked]}/verify",
+        response = await session.post(
+            f"{self.url2}/aas/oauth2/api/login/{url[mfa_type]}/verify",
             params={
                 'code':mfa_code
             }
@@ -184,30 +215,51 @@ class nsLib:
         log.debug(f"{response.text}")
 
         if response.json().get("action") == "MAX_QUIZ":
-            response = await self.session.post(
+            response = await session.post(
                 f"{self.url2}/aas/oauth2/api/login/quiz-max/skip"
             )
             log.info(f"{response} {response.url}")
             log.debug(f"{response.text}")
 
+        cookies = []
+        for cookie in session.cookies.jar:
+            cookies.append({
+                "name": cookie.name,
+                "value": cookie.value,
+                "domain": cookie.domain,
+                "path": cookie.path,
+            })
+        await session.aclose()
         try:
             temp = response.json()
-            self.redir_url = temp['redirect_url']
-            rnd = {'status':temp['action']}
+            rnd = {
+                'status':temp['action'],
+                'redirect_url':temp['redirect_url'],
+                'cookies':cookies
+            }
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
 
         return rnd
 
-    async def esiaLoginEnd(self, filename=None):
+    async def esiaLoginEnd(self, redirect_url, LoginOrMfaCookies, filename=None):
+        session = httpx.AsyncClient(
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
+            timeout=httpx.Timeout(30.0),
+            follow_redirects=True,
+        )
         log = self.log
+        for c in LoginOrMfaCookies:
+            session.cookies.set(c['name'], c['value'], domain=c['domain'], path=c['path'])
 
-        response = await self.session.get(self.redir_url)
+        response = await session.get(redirect_url)
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        response = await self.session.get(
+        response = await session.get(
             f"{self.url}webapi/sso/esia/account-info", 
             params={'loginState':self.loginState}
         )
@@ -225,7 +277,7 @@ class nsLib:
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
-        response = await self.session.post(
+        response = await session.post(
             f"{self.url}webapi/auth/login",
             data=data)
         log.info(f"{response} {response.url}")
@@ -236,7 +288,7 @@ class nsLib:
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
-        response = await self.session.get(
+        response = await session.get(
             f"{self.url}webapi/mysettings/mobile/pincode",
             headers=headers
         )
@@ -253,7 +305,7 @@ class nsLib:
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
-        response = await self.session.post(
+        response = await session.post(
             f"{self.url3}/connect/token",
             data=data
         )
@@ -271,12 +323,13 @@ class nsLib:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
 
-        response = await self.session.get(
+        response = await session.get(
             f"{self.url}logout",
             headers=headers
         )
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
+        await session.aclose()
 
         if filename:
             async with aiofiles.open(filename, 'w', encoding='utf_8') as n:
@@ -425,8 +478,8 @@ class nsLib:
             await n.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
 
         return {'authorization':f"Bearer {tokens.get('access_token')}"}
-
-    async def getToken(self, filename):
+    
+    async def getHeader(self, filename):
         if not os.path.exists(filename):
             raise FileNotFoundError("Файл не найден")
         async with aiofiles.open(filename, 'r', encoding='utf-8') as df:
