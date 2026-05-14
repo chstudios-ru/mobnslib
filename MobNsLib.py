@@ -1,5 +1,4 @@
-import json, os, logging, httpx, asyncio, aiofiles
-import redis.asyncio as redis
+import json, os, logging, httpx, asyncio
 from datetime import datetime, timedelta
 
 from requests import session
@@ -243,7 +242,7 @@ class nsLib:
 
         return rnd
 
-    async def esiaLoginEnd(self, redirect_url, LoginOrMfaCookies, filename=None):
+    async def esiaLoginEnd(self, redirect_url, LoginOrMfaCookies):
         session = httpx.AsyncClient(
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -331,11 +330,7 @@ class nsLib:
         log.debug(f"{response.text}")
         await session.aclose()
 
-        if filename:
-            async with aiofiles.open(filename, 'w', encoding='utf_8') as n:
-                await n.write(json.dumps(tokens, ensure_ascii=False, indent=4))
-
-        return {'authorization':f"Bearer {tokens.get('access_token')}"}
+        return tokens
 
     async def getInfo(self, headers):
         log = self.log
@@ -404,7 +399,6 @@ class nsLib:
     async def diary(
             self,
             headers,
-            diaryName,
             startDate=None,
             studentId=None,
             endDate=None,
@@ -433,23 +427,10 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        async with aiofiles.open(diaryName, 'w', encoding='utf_8') as diary:
-            await diary.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
-        
         return response.json()
 
-    async def tokenRefresh(self, filename):
+    async def tokenRefresh(self, refresh_token):
         log = self.log
-
-        if not os.path.exists(filename):
-            print('Файл не найден')
-            return False
-        async with aiofiles.open(filename, 'r', encoding='utf-8') as ddf:
-            try:
-                refresh_token = json.loads(await ddf.read())['refresh_token']
-            except (KeyError, IndexError, TypeError) as e:
-                log.error("an error occurred while extracting data from a file", exc_info=True)
-                raise NoDataInFile()
 
         data = {
             'grant_type':'refresh_token',
@@ -474,22 +455,8 @@ class nsLib:
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
-        async with aiofiles.open(filename, 'w', encoding='utf_8') as n:
-            await n.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
 
-        return {'authorization':f"Bearer {tokens.get('access_token')}"}
-    
-    async def getHeader(self, filename):
-        if not os.path.exists(filename):
-            raise FileNotFoundError("Файл не найден")
-        async with aiofiles.open(filename, 'r', encoding='utf-8') as df:
-            try:
-                access_token = json.loads(await df.read())['access_token']
-            except (KeyError, IndexError, TypeError) as e:
-                self.log.error("an error occurred while extracting data from a file", exc_info=True)
-                raise NoDataInFile()
-
-        return {'authorization':f"Bearer {access_token}"}
+        return tokens
 
     async def getVer(self):
         response = await self.session.get(
@@ -503,23 +470,18 @@ class nsLib:
         self.log.debug(f"{response.text}")
         return response.text.replace('"','')
 
-    async def getAssignments(self, headers, studentId, diaryName, assignmentFile, diary=None):
+    async def getAssignments(self, headers, studentId, classmetingIds=None, diary=None, limit=10, delay=0.1):
         log = self.log
-        limit = 10
-        delay = 0.1
-
-        async with aiofiles.open(diaryName, 'r', encoding='utf-8') as d:
-            diary = json.loads(await d.read())
         
-        if diary:
-            assignIds = []
+        if diary and not classmetingIds:
+            classmetingIds = []
             for day in diary:
                 id = day.get("classmeetingId", [])
                 if id:
-                    assignIds.append(id)
+                    classmetingIds.append(id)
         assigns = []
-        for i in range(0, len(assignIds), limit):
-            chunk = assignIds[i : i + limit]
+        for i in range(0, len(classmetingIds), limit):
+            chunk = classmetingIds[i : i + limit]
             response = await self.session.get(
                 f"{self.api}assignments",
                 headers=headers,
@@ -538,15 +500,13 @@ class nsLib:
                 log.error("no expected data in response", exc_info=True)
                 raise NoDataInResponse() from e
             
-            if i + limit < len(assignIds):
+            if i + limit < len(classmetingIds):
                 log.debug(f"Waiting {delay}s before next request...")
                 await asyncio.sleep(delay)
-            
 
-        async with aiofiles.open(assignmentFile, 'w', encoding='utf-8') as dtrf:
-            await dtrf.write(json.dumps(assigns, ensure_ascii=False, indent=4))
+        return assigns
 
-    async def loadAttachment(self, headers, assignmentId, save=False, attachName=None):
+    async def loadAttachment(self, headers, assignmentId):
         log = self.log
 
         response = await self.session.get(
@@ -570,21 +530,10 @@ class nsLib:
                 log.error("no expected data in response", exc_info=True)
                 raise NoDataInResponse() from e
 
-        if save:
-            response = await self.session.get(
-                f"{self.api}attachments/{attachmentId}",
-                headers=headers
-            )
-            log.info(f"{response} {response.url}")
-
-            async with aiofiles.open(attachName, 'w', encoding='utf-8') as atfile:
-                atfile.write(response.text)
-
-        else:
-            temp.append({'url':f"{self.api}attachments/{attachmentId}"})
+        temp.append({'url':f"{self.api}attachments/{attachmentId}"})
         return temp
 
-    async def getSchoolYear(self, headers, studentId, fileName=None):
+    async def getSchoolYear(self, headers, studentId):
         log = self.log
 
         response = await self.session.get(
@@ -599,37 +548,37 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        if fileName:
-            async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                await syf.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
         try:
-            year = response.json()[0]['schoolyear']['id']
+            json_data = response.json()
+            year = {
+                'nowYear':json_data[0]['schoolyear']['id'],
+                'allYears':json_data
+            }
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
+
         return year
 
-    async def getSubjects(self, headers, studentId, schoolYearId, fileName=None, diaryName=None):
+    async def getSubjects(self, headers, studentId, schoolYearId, diary=None, subjects=None):
         log = self.log
 
-        response = await self.session.get(
-            f"{self.api}subjects",
-             headers=headers,
-             params = {
-                 'studentId':studentId,
-                 'schoolYearId':schoolYearId,
-                 'appVersion':self.appVer,
-                 'lng':self.lng
-             }
-        )
-        log.info(f"{response} {response.url}")
-        log.debug(f"{response.text}")
+        if not subjects:
+            response = await self.session.get(
+                f"{self.api}subjects",
+                headers=headers,
+                params = {
+                    'studentId':studentId,
+                    'schoolYearId':schoolYearId,
+                    'appVersion':self.appVer,
+                    'lng':self.lng
+                }
+            )
+            log.info(f"{response} {response.url}")
+            log.debug(f"{response.text}")
+            subjects = response.json()
 
-        subjects = response.json()
-        if diaryName and fileName:
-            async with aiofiles.open(diaryName, 'r', encoding='utf-8') as d:
-                diary = json.loads(await d.read())
-
+        if diary:
             group_mapping = {
                 item['subjectId']: item['subjectGroupId'] 
                 for item in diary if item.get('subjectGroupId')
@@ -637,16 +586,9 @@ class nsLib:
             for subject in subjects:
                 subject['subjectGroupId'] = group_mapping.get(subject['id'])
 
-            async with aiofiles.open(fileName, 'w', encoding='utf-8') as d:
-                await d.write(json.dumps(subjects, ensure_ascii=False, indent=4))
-
-        elif fileName:
-            async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                await syf.write(json.dumps(subjects, ensure_ascii=False, indent=4))
-
         return subjects
 
-    async def getTotals(self, headers, studentId, schoolYearId, fileName=None):
+    async def getTotals(self, headers, studentId, schoolYearId):
         log = self.log
 
         response = await self.session.get(
@@ -663,12 +605,9 @@ class nsLib:
         log.debug(f"{response.text}")
 
         data = response.json()
-        if fileName:
-            async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                await syf.write(json.dumps(data, ensure_ascii=False, indent=4))
         return data
 
-    async def getTerms(self, headers, studentId, schoolYearId, fileName=None):
+    async def getTerms(self, headers, studentId, schoolYearId):
         log = self.log
 
         response = await self.session.get(
@@ -684,12 +623,9 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        if fileName:
-            async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                await syf.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
         return response.json()
 
-    async def getAnnoucements(self, headers, studentId, fileName=None):
+    async def getAnnoucements(self, headers, studentId):
         log = self.log
 
         response = await self.session.get(
@@ -704,12 +640,9 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        if fileName:
-            async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                await syf.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
         return response.json()
 
-    async def Events(self, event_type, headers, studentId, periodDays, subjectGroupIds, fileName=None, limit=None, offset=None):
+    async def Events(self, event_type, headers, studentId, periodDays, subjectGroupIds, limit=None, offset=None):
         log = self.log
         if not limit:
             limit = 100
@@ -733,25 +666,22 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        if fileName:
-            async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                await syf.write(json.dumps(response.json(), ensure_ascii=False, indent=4))
         return response.json()
 
-    async def getHomeworkInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
-        return await self.Events('HomeworkInfo', headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
+    async def getHomeworkInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, limit=None, offset=None):
+        return await self.Events('HomeworkInfo', headers, studentId, periodDays, subjectGroupIds, limit, offset)
 
-    async def getResultInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
-        return await self.Events('ResultInfo', headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
+    async def getResultInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, limit=None, offset=None):
+        return await self.Events('ResultInfo', headers, studentId, periodDays, subjectGroupIds, limit, offset)
 
-    async def getTermTotalInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
-        return await self.Events('TermTotalInfo', headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
+    async def getTermTotalInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, limit=None, offset=None):
+        return await self.Events('TermTotalInfo', headers, studentId, periodDays, subjectGroupIds, limit, offset)
 
-    async def getYearTotalInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
-        return await self.Events('YearTotalInfo', headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
+    async def getYearTotalInfoEvents(self, headers, studentId, periodDays, subjectGroupIds=None, limit=None, offset=None):
+        return await self.Events('YearTotalInfo', headers, studentId, periodDays, subjectGroupIds, limit, offset)
 
-    async def getAllEvents(self, headers, studentId, periodDays, subjectGroupIds=None, fileName=None, limit=None, offset=None):
-        return await self.Events(['HomeworkInfo', 'ResultInfo', 'TermTotalInfo', 'YearTotalInfo'], headers, studentId, periodDays, subjectGroupIds, fileName, limit, offset)
+    async def getAllEvents(self, headers, studentId, periodDays, subjectGroupIds=None, limit=None, offset=None):
+        return await self.Events(['HomeworkInfo', 'ResultInfo', 'TermTotalInfo', 'YearTotalInfo'], headers, studentId, periodDays, subjectGroupIds, limit, offset)
 
     async def getMailUnreadCount(self, headers, studentId):
         log = self.log
@@ -775,7 +705,7 @@ class nsLib:
         # Ох зря я сюда полез...
 
     @staticmethod
-    async def getServerList(fileName=None):
+    async def getServerList():
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             response = await client.get(
                 f"https://mobile.ir-tech.ru/api/v1/mobile/parent/end-points",
@@ -786,8 +716,5 @@ class nsLib:
             )
             
             data = response.json()
-            if fileName:
-                async with aiofiles.open(fileName, 'w', encoding='utf-8') as syf:
-                    await syf.write(json.dumps(data, ensure_ascii=False, indent=4))
             return data
 
