@@ -1,11 +1,10 @@
-import json, os, logging, httpx, asyncio
+import logging, httpx, asyncio
 from datetime import datetime, timedelta
-
-from requests import session
 
 class HTMLTruncateHandler(logging.FileHandler):
     """Специальный обработчик для файла, который режет HTML"""
     def emit(self, record):
+        original_msg = record.msg
         msg_lower = record.msg.lower()
         # Если в сообщении есть признаки HTML — режем его
         if "<!doctype html>" in msg_lower:
@@ -17,6 +16,7 @@ class HTMLTruncateHandler(logging.FileHandler):
             if len(record.msg) > 250:
                 record.msg = record.msg[:250] + "..."
         super().emit(record)
+        self.flush()
 
 class NoDataInResponse(Exception):
     def __init__(self, message="no expected data in response"):
@@ -98,15 +98,15 @@ class nsLib:
             f"{self.url}webapi/auth/login-state",
             data=data
         )
-        self.loginState = response.text
-        self.loginState = self.loginState.replace('"','')
+        loginState = response.text
+        loginState = loginState.replace('"','')
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
         response = await session.get(
             f"{self.url}webapi/sso/esia/crosslogin",
             params={
-                'loginState':self.loginState,
+                'loginState':loginState,
                 'esia_permissions':'1',
                 'esia_role':'1'
             }
@@ -160,6 +160,7 @@ class nsLib:
                     'status':tmp['action'],
                     'desc':tmp['mfa_details']['type'],
                     'details':tmp['mfa_details'],
+                    'loginState':loginState,
                     'cookies':cookies
                 }
             except (KeyError, IndexError, TypeError) as e:
@@ -174,6 +175,7 @@ class nsLib:
                 rnd = {
                     'status':tmp['action'],
                     'redirect_url':tmp['redirect_url'],
+                    'loginState':loginState,
                     'cookies':cookies
                 }
             except (KeyError, IndexError, TypeError) as e:
@@ -242,7 +244,7 @@ class nsLib:
 
         return rnd
 
-    async def esiaLoginEnd(self, redirect_url, LoginOrMfaCookies):
+    async def esiaLoginEnd(self, redirect_url, LoginOrMfaCookies, loginState):
         session = httpx.AsyncClient(
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -260,7 +262,7 @@ class nsLib:
 
         response = await session.get(
             f"{self.url}webapi/sso/esia/account-info", 
-            params={'loginState':self.loginState}
+            params={'loginState':loginState}
         )
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
@@ -269,7 +271,7 @@ class nsLib:
             tmp = response.json()        
             data = {
                 'idp':'esia',
-                'loginState':self.loginState,
+                'loginState':loginState,
                 'LoginType':'8',
                 'lscope':tmp['users'][0]['id']
             }
