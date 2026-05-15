@@ -30,10 +30,6 @@ class UnexpectedResponse(Exception):
     def __init__(self, message="unexpected response"):
         super().__init__(message)
 
-class NoDataInFile(Exception):
-    def __init__(self, message="an error occurred while extracting data from a file"):
-        super().__init__(message)
-
 class WrongLoginOrPassword(Exception):
     def __init__(self, message="wrong login or password"):
         super().__init__(message)
@@ -55,9 +51,9 @@ class nsLib:
         else:
             self.api = f"{url}/api/mobile/"
         self.url = f"{url}/"
-        self.url1 = 'https://mobile.ir-tech.ru'
-        self.url2 = 'https://esia.gosuslugi.ru'
-        self.url3 = 'https://identity.ir-tech.ru'
+        self.url1 = 'https://mobile.ir-tech.ru/'
+        self.url2 = 'https://esia.gosuslugi.ru/'
+        self.url3 = 'https://identity.ir-tech.ru/'
         self.client_secret = '04064338-13df-4747-8dea-69849f9ecdf0'
         self.appVer = '1.3.9'
         self.lng = "ru"
@@ -117,7 +113,7 @@ class nsLib:
         pattern = '%d-%m-%Y_%H-%M-%S'
         ondate = datetime.now().strftime(pattern)
         response = await session.get(
-            f"{self.url2}/rs/dscl",
+            f"{self.url2}rs/dscl",
             params={
             'ondate':ondate
             }
@@ -131,7 +127,7 @@ class nsLib:
             raise NoLoginOrPassword()
 
         response = await session.post(
-            f"{self.url2}/aas/oauth2/api/login/", 
+            f"{self.url2}aas/oauth2/api/login/", 
             json={
                 'login':login,
                 'password':password
@@ -207,7 +203,7 @@ class nsLib:
         }
 
         response = await session.post(
-            f"{self.url2}/aas/oauth2/api/login/{url[mfa_type]}/verify",
+            f"{self.url2}aas/oauth2/api/login/{url[mfa_type]}/verify",
             params={
                 'code':mfa_code
             }
@@ -217,7 +213,7 @@ class nsLib:
 
         if response.json().get("action") == "MAX_QUIZ":
             response = await session.post(
-                f"{self.url2}/aas/oauth2/api/login/quiz-max/skip"
+                f"{self.url2}aas/oauth2/api/login/quiz-max/skip"
             )
             log.info(f"{response} {response.url}")
             log.debug(f"{response.text}")
@@ -307,18 +303,23 @@ class nsLib:
             log.error("no expected data in response", exc_info=True)
             raise NoDataInResponse() from e
         response = await session.post(
-            f"{self.url3}/connect/token",
+            f"{self.url3}connect/token",
             data=data
         )
+        tmp = response.json()
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
+        created_at = await session.get(
+            f'{self.url1}api/v1/mobile/parent/time'
+        )
+
         try:
-            tmp = response.json()
             tokens = {
                 'access_token':tmp['access_token'],
                 'refresh_token':tmp['refresh_token'],
-                'expires_in':tmp['expires_in']
+                'expires_in':tmp['expires_in'],
+                'created_at':created_at.text
             }
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
@@ -351,9 +352,17 @@ class nsLib:
 
         try:
             tmp = response.json()
+            if tmp[0]['isStudent']:
+                role = 'student'
+            elif tmp[0]['isParent']:
+                role = 'parent'
+            elif tmp[0]['isStaff']:
+                role = 'staff'
             info = {
                 'firstName':tmp[0]['firstName'],
-                'schoolId':tmp[0]['organizations'][0]['organization']['id'],
+                'nickName':tmp[0]['nickName'],
+                'role':role,
+                'schoolName':tmp[0]['organizations'][0]['organization']['name'],
                 'studentId':tmp[0]['id'],
                 'classId':tmp[0]['organizations'][0]['classes'][0]['classId']
             }
@@ -367,7 +376,7 @@ class nsLib:
         log = self.log
 
         response = await self.session.get(
-            f"{self.url3}/users/endpoints", 
+            f"{self.url3}users/endpoints", 
             headers=headers,
             params={
                 'appVersion':self.appVer,
@@ -441,7 +450,7 @@ class nsLib:
             'client_secret':self.client_secret
         }
         response = await self.session.post(
-            f"{self.url3}/connect/token",
+            f"{self.url3}connect/token",
             data=data
         )
         log.info(f"{response} {response.url}")
@@ -462,7 +471,7 @@ class nsLib:
 
     async def getVer(self):
         response = await self.session.get(
-            f"{self.url1}/api/v1/mobile/parent/app-versions/published",
+            f"{self.url1}api/v1/mobile/parent/app-versions/published",
             params={
                 'appVersion':self.appVer,
                 'lng':self.lng
