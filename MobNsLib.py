@@ -571,23 +571,22 @@ class nsLib:
 
         return year
 
-    async def getSubjects(self, headers, studentId, schoolYearId, diary=None, subjects=None):
+    async def getSubjects(self, headers, studentId, schoolYearId, diary=None):
         log = self.log
 
-        if not subjects:
-            response = await self.session.get(
-                f"{self.api}subjects",
-                headers=headers,
-                params = {
-                    'studentId':studentId,
-                    'schoolYearId':schoolYearId,
-                    'appVersion':self.appVer,
-                    'lng':self.lng
-                }
-            )
-            log.info(f"{response} {response.url}")
-            log.debug(f"{response.text}")
-            subjects = response.json()
+        response = await self.session.get(
+            f"{self.api}subjects",
+            headers=headers,
+            params = {
+                'studentId':studentId,
+                'schoolYearId':schoolYearId,
+                'appVersion':self.appVer,
+                'lng':self.lng
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+        subjects = response.json()
 
         if diary:
             group_mapping = {
