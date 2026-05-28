@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MobNsLib"
+version = "0.1.0"
+authors = [
+  { name="VelimVIM", email="sliwkimyau@gmail.com" },
+]
+description = "Библиотека для взаимодействия с сетевым дневником (NetSchool)"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "httpx>=0.24.0",
+    "aiofiles>=23.1.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/chstudios-ru/osd_back"
+"Bug Tracker" = "https://github.com/chstudios-ru/osd_back/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

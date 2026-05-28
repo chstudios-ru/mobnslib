@@ -183,7 +183,7 @@ class nsLib:
         log.error("unexpected response", exc_info=True)
         raise UnexpectedResponse()
 
-    async def esiaMFA(self, mfa_code, mfa_type, LoginCookies):
+    async def esiaMFA(self, mfa_code, LoginData):
         session = httpx.AsyncClient(
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -193,7 +193,7 @@ class nsLib:
             cookies=httpx.Cookies()
         )
         log = self.log
-        for c in LoginCookies:
+        for c in LoginData['cookies']:
             session.cookies.set(c['name'], c['value'], domain=c['domain'], path=c['path'])
 
         url = {
@@ -203,7 +203,7 @@ class nsLib:
         }
 
         response = await session.post(
-            f"{self.url2}aas/oauth2/api/login/{url[mfa_type]}/verify",
+            f"{self.url2}aas/oauth2/api/login/{url[LoginData['desc']]}/verify",
             params={
                 'code':mfa_code
             }
@@ -232,6 +232,7 @@ class nsLib:
             rnd = {
                 'status':temp['action'],
                 'redirect_url':temp['redirect_url'],
+                'loginState':LoginData['loginState'],
                 'cookies':cookies
             }
         except (KeyError, IndexError, TypeError) as e:
@@ -240,7 +241,7 @@ class nsLib:
 
         return rnd
 
-    async def esiaLoginEnd(self, redirect_url, LoginOrMfaCookies, loginState):
+    async def esiaLoginEnd(self, LoginOrMfaData):
         session = httpx.AsyncClient(
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -249,16 +250,16 @@ class nsLib:
             follow_redirects=True,
         )
         log = self.log
-        for c in LoginOrMfaCookies:
+        for c in LoginOrMfaData['cookies']:
             session.cookies.set(c['name'], c['value'], domain=c['domain'], path=c['path'])
 
-        response = await session.get(redirect_url)
+        response = await session.get(LoginOrMfaData['redirect_url'])
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
         response = await session.get(
             f"{self.url}webapi/sso/esia/account-info", 
-            params={'loginState':loginState}
+            params={'loginState':LoginOrMfaData['loginState']}
         )
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
@@ -267,7 +268,7 @@ class nsLib:
             tmp = response.json()        
             data = {
                 'idp':'esia',
-                'loginState':loginState,
+                'loginState':LoginOrMfaData['loginState'],
                 'LoginType':'8',
                 'lscope':tmp['users'][0]['id']
             }
