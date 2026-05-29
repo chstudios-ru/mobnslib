@@ -22,7 +22,7 @@ async def main():
         code = input()
         result = await ns.EsiaMfa(code, result)
     
-    tokens = await ns.EsiaLogin()
+    tokens = await ns.EsiaLogin(result)
 
     
 if __name__ == "__main__":

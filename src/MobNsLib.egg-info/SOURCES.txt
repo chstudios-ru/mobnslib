@@ -1,0 +1,10 @@
+LICENSE
+README.md
+pyproject.toml
+src/MobNsLib/MobNsLib.py
+src/MobNsLib/_init_.py
+src/MobNsLib.egg-info/PKG-INFO
+src/MobNsLib.egg-info/SOURCES.txt
+src/MobNsLib.egg-info/dependency_links.txt
+src/MobNsLib.egg-info/requires.txt
+src/MobNsLib.egg-info/top_level.txt
