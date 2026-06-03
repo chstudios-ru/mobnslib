@@ -313,14 +313,14 @@ class nsLib:
 
         created_at = (await session.get(
             f'{self.url1}api/v1/mobile/parent/time'
-        )).replace('"','')
+        )).text.replace('"','')
 
         try:
             tokens = {
                 'access_token':tmp['access_token'],
                 'refresh_token':tmp['refresh_token'],
                 'expires_in':int(tmp['expires_in']),
-                'created_at':int(created_at.text)
+                'created_at':int(created_at)
             }
         except (KeyError, IndexError, TypeError) as e:
             log.error("no expected data in response", exc_info=True)
