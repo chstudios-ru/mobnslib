@@ -411,16 +411,13 @@ class nsLib:
     async def diary(
             self,
             headers,
+            studentId,
             startDate=None,
-            studentId=None,
             endDate=None,
             day= None,
             pattern='%Y-%m-%d'):
         log = self.log
 
-        if not studentId:
-            info = await self.getInfo(headers=headers)
-            studentId = info.get('studentId')
         if not (startDate and endDate):
             startDate, endDate = self.get_week_range(pattern, day)
 
