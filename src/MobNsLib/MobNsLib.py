@@ -2,18 +2,15 @@ import logging, httpx, asyncio, json
 from datetime import datetime, timedelta
 
 class HTMLTruncateHandler(logging.FileHandler):
-    """Специальный обработчик для файла, который режет HTML"""
     def emit(self, record):
         original_msg = record.msg
         msg_lower = record.msg.lower()
-        # Если в сообщении есть признаки HTML — режем его
         if "<!doctype html>" in msg_lower:
             record.msg = "<!DOCTYPE html>..."
 
         # sensitive_keys = ["access", "code=ey", "classmeeting"]
         # if any(key in msg_lower for key in sensitive_keys):
-        #     # Проверяем, не обрезали ли мы её уже (на случай длинных цепочек)
-        if len(record.msg) > 250:
+        if len(record.msg) > 1000:
             record.msg = record.msg[:1000] + "..."
         super().emit(record)
         self.flush()
@@ -24,10 +21,6 @@ class NoDataInResponse(Exception):
 
 class NotJSONResponse(Exception):
     def __init__(self, message="response is not JSON"):
-        super().__init__(message)
-
-class NoLoginOrPassword(Exception):
-    def __init__(self, message="no login or password"):
         super().__init__(message)
 
 class UnexpectedResponse(Exception):
@@ -101,7 +94,7 @@ class nsLib:
             log.error("response is not valid JSON", exc_info=True)
             raise NotJSONResponse() from e
 
-    async def esiaLogin(self, login=None, password=None):
+    async def esiaLogin(self, login: str, password: str):
         session = httpx.AsyncClient(
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -143,11 +136,6 @@ class nsLib:
         )
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
-        
-        if not (login or password):
-            log.error("No login or password")
-            log.error("no login or password", exc_info=True)
-            raise NoLoginOrPassword()
 
         response = await session.post(
             f"{self.url2}aas/oauth2/api/login/", 
@@ -206,7 +194,7 @@ class nsLib:
         log.error("unexpected response", exc_info=True)
         raise UnexpectedResponse()
 
-    async def esiaMFA(self, mfa_code, LoginData):
+    async def esiaMFA(self, mfa_code: str, LoginData: dict):
         session = httpx.AsyncClient(
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -374,28 +362,33 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
-        try:
-            tmp = self.checkResponse(response)
-            if tmp[0]['isStudent']:
-                role = 'student'
-            elif tmp[0]['isParent']:
-                role = 'parent'
-            elif tmp[0]['isStaff']:
-                role = 'staff'
-            info = {
-                'firstName':tmp[0]['firstName'],
-                'nickName':tmp[0]['nickName'],
-                'role':role,
-                'schoolName':tmp[0]['organizations'][0]['organization']['name'],
-                'schoolId':tmp[0]['organizations'][0]['organization']['id'],
-                'studentId':tmp[0]['id'],
-                'classId':tmp[0]['organizations'][0]['classes'][0]['classId']
-            }
-        except (KeyError, IndexError, TypeError) as e:
-            log.error("no expected data in response", exc_info=True)
-            raise NoDataInResponse() from e
+        # try:
+        #     tmp = self.checkResponse(response)
+        #     all_info = []
+        #     for user in tmp:
+        #         if user['isStudent']:
+        #             role = 'student'
+        #         elif user['isParent']:
+        #             role = 'parent'
+        #         elif user['isStaff']:
+        #             role = 'staff'
+        #         info = {
+        #             'firstName':user['firstName'],
+        #             'nickName':user['nickName'],
+        #             'role':role,
+        #             'schoolName':user['organizations'][0]['organization']['name'],
+        #             'schoolId':user['organizations'][0]['organization']['id'],
+        #             'studentId':user['id'],
+        #             'classId':user['organizations'][0]['classes'][0]['classId']
+        #         }
+        #         all_info.append(info)
+        # except (KeyError, IndexError, TypeError) as e:
+        #     log.error("no expected data in response", exc_info=True)
+        #     raise NoDataInResponse() from e
+        #
+        # недостаточно данных для таких манипуляций
 
-        return info
+        return self.checkResponse(response)
 
     async def getServerId(self, headers):
         log = self.log
@@ -492,6 +485,8 @@ class nsLib:
         return tokens
 
     async def getVer(self):
+        log = self.log
+
         response = await self.session.get(
             f"{self.url1}api/v1/mobile/parent/app-versions/published",
             params={
@@ -499,8 +494,15 @@ class nsLib:
                 'lng':self.lng
             }
         )
-        self.log.info(f"{response} {response.url}")
-        self.log.debug(f"{response.text}")
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        if response.is_error:
+            sent_payload = response.request.content.decode('utf-8')
+            log.error(f"HTTP error: {response.status_code} - {response.text}")
+            log.debug(f"Sent payload: {sent_payload}")
+            response.raise_for_status()
+
         return response.text.replace('"','')
 
     async def getAssignments(self, headers, studentId, classmetingIds=None, diary=None, limit=20, delay=0.1):
@@ -851,7 +853,117 @@ class nsLib:
         log.info(f"{response} {response.url}")
         log.debug(f"{response.text}")
 
+        if response.is_error:
+            sent_payload = response.request.content.decode('utf-8')
+            log.error(f"HTTP error: {response.status_code} - {response.text}")
+            log.debug(f"Sent payload: {sent_payload}")
+            response.raise_for_status()
+        
         return {"status": "success", "message": f"Messages {messageId} moved to deleted.", "details":"(Netschool API does not provide a specific response for this action.)"}
+
+    async def readMail(self, headers, studentId, messageId, pageSize: int = 150):
+        log = self.log
+
+        response = await self.session.post(
+            f"{self.api}mail/messages/{messageId}/read",
+            headers=headers,
+            params={
+                "userId":studentId,
+                "pageSize":pageSize
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        return self.checkResponse(response)
+
+    async def getSampleMail(self, headers, studentId, messageId, action):
+        log = self.log
+
+        response = await self.session.get(
+            f"{self.api}mail/messages/{messageId}/edit",
+            headers=headers,
+            params={
+                'userId':studentId,
+                'action':action,
+                'appVersion':self.appVer,
+                'lng':self.lng
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        return self.checkResponse(response)
+
+    async def getSampleReplyMail(self, headers, studentId, messageId):
+        return await self.getSampleMail(headers, studentId, messageId, 'reply')
+    
+    async def getSampleForwardMail(self, headers, studentId, messageId):
+        return await self.getSampleMail(headers, studentId, messageId, 'forward')
+
+    async def getSampleReplyAllMail(self, headers, studentId, messageId):
+        return await self.getSampleMail(headers, studentId, messageId, 'replyall')
+
+    async def blockUser(self, headers, studentId, userId):
+        log = self.log
+
+        response = await self.session.post(
+            f"{self.api}mail/blocked-users",
+            headers=headers,
+            params={
+                'userId':studentId,
+                'authorId':userId
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+        
+        if response.is_error:
+            sent_payload = response.request.content.decode('utf-8')
+            log.error(f"HTTP error: {response.status_code} - {response.text}")
+            log.debug(f"Sent payload: {sent_payload}")
+            response.raise_for_status()
+
+        return {"status": "success", "message": f"User {userId} blocked.", "details":"(Netschool API does not provide a specific response for this action.)"}
+
+    async def unblockUser(self, headers, studentId, userId):
+        log = self.log
+
+        response = await self.session.delete(
+            f"{self.api}mail/blocked-users",
+            headers=headers,
+            params={
+                'userId':studentId,
+                'authorId':userId
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        if response.is_error:
+            sent_payload = response.request.content.decode('utf-8')
+            log.error(f"HTTP error: {response.status_code} - {response.text}")
+            log.debug(f"Sent payload: {sent_payload}")
+            response.raise_for_status()
+
+        return {"status": "success", "message": f"User {userId} unblocked.", "details":"(Netschool API does not provide a specific response for this action.)"}
+
+    async def getBlockedUsers(self, headers, studentId):
+        log = self.log
+
+        response = await self.session.get(
+            f"{self.api}mail/blocked-users",
+            headers=headers,
+            params={
+                'userId':studentId,
+                'appVersion':self.appVer,
+                'lng':self.lng
+            }
+        )
+        log.info(f"{response} {response.url}")
+        log.debug(f"{response.text}")
+
+        return self.checkResponse(response)
 
     async def getRecipients(self, headers, studentId, orgId):
         log = self.log
@@ -906,4 +1018,3 @@ class nsLib:
                 return response.json()
             except (json.JSONDecodeError, ValueError) as e:
                 raise NotJSONResponse() from e
-
