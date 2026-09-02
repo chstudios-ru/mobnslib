@@ -1,9 +1,20 @@
-from importlib.metadata import version, PackageNotFoundError
-try:
-    __version__ = version(__name__)
-except PackageNotFoundError:
-    __version__ = "unknown"
+from .client import nslib
+from .exceptions import (
+    NoDataInResponse,
+    NotJSONResponse,
+    UnexpectedResponse,
+    WrongLoginOrPassword,
+    NoExpectedData,
+)
+from .utils import check_response, get_week_range
 
-from .MobNsLib import *
-
-__all__ = ["nsLib"]
+__all__ = [
+    "nslib",
+    "NoDataInResponse",
+    "NotJSONResponse",
+    "UnexpectedResponse",
+    "WrongLoginOrPassword",
+    "NoExpectedData",
+    "check_response",
+    "get_week_range"
+]
