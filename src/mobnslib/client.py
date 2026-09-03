@@ -23,7 +23,7 @@ class nslib:
     ):
         self.proxy = proxy
         self._client_args = {
-            "headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            "headers": {"User-Agent": "mobnslib"},
             "timeout": httpx.Timeout(30.0),
             "follow_redirects": True
         }

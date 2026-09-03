@@ -1,3 +1,9 @@
+'''
+Тест всех методов, вывод каждого сохраняется в отдельный файл в папке test_outputs.
+Перед запуском номер телефона и пароль обязательно должны быть в .env, totp ключ опционально.
+'''
+
+
 import asyncio
 import os
 import json
@@ -7,9 +13,9 @@ from mobnslib import nslib
 # Load credentials from .env
 load_dotenv()
 
-LOGIN = os.getenv("ESIA_LOGIN")
-PASSWORD = os.getenv("ESIA_PASSWORD")
-TTP_KEY = os.getenv("ESIA_TTP")  # Used for TOTP if needed
+LOGIN = os.getenv("LOGIN")
+PASSWORD = os.getenv("PASSWORD")
+TTP_KEY = os.getenv("TTP_KEY")  # Used for TOTP if needed
 API_URL = "https://net-school.cap.ru/"
 
 async def main():
@@ -32,7 +38,7 @@ async def main():
         
         # If MFA is required
         if login_res.get('status') == 'ENTER_MFA':
-            if TTP_KEY:            
+            if TTP_KEY and login_res.get('desc'):
                 # Here you would generate the TOTP code using the TTP_KEY
                 # For demonstration, we assume we have a valid mfa_code
                 import pyotp
@@ -46,7 +52,7 @@ async def main():
                     "MAX":"из макса",
                     "SMS":"из смс"
                 }
-                mfa_code = input(f"Введите код MFA {mfa_types[login_res['desc']]}")
+                mfa_code = input(f"Введите код {mfa_types[login_res['desc']]}: ")
             login_res = await client.esia_mfa(mfa_code, login_res)
             
         tokens = await client.esia_login_end(login_res)

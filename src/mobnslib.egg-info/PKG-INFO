@@ -1,3 +1,25 @@
+Metadata-Version: 2.4
+Name: mobnslib
+Version: 1.2.0
+Summary: Библиотека для взаимодействия с сетевым дневником (NetSchool)
+Author-email: VelimVIM <sliwkimyau@gmail.com>
+Project-URL: Homepage, https://github.com/chstudios-ru/osd_back
+Project-URL: Bug Tracker, https://github.com/chstudios-ru/osd_back/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: httpx>=0.24.0
+Requires-Dist: aiofiles>=23.1.0
+Provides-Extra: test
+Requires-Dist: pytest>=7.0.0; extra == "test"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "test"
+Requires-Dist: python-dotenv; extra == "test"
+Requires-Dist: pyotp; extra == "test"
+Dynamic: license-file
+
 # mobnslib
 
 Асинхронная библиотека для взаимодействия с сетевым дневником (NetSchool).
