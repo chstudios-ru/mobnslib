@@ -16,7 +16,7 @@ load_dotenv()
 LOGIN = os.getenv("LOGIN")
 PASSWORD = os.getenv("PASSWORD")
 TTP_KEY = os.getenv("TTP_KEY")  # Used for TOTP if needed
-API_URL = "https://net-school.cap.ru/"
+API_URL = os.getenv("API_URL", "https://school.region.ru/")
 
 async def main():
     if not LOGIN or not PASSWORD:
@@ -48,11 +48,13 @@ async def main():
                 print(f"MFA type: {login_res['desc']}. Code generated.")
             else:
                 mfa_types = {
-                    "TTP":"totp",
-                    "MAX":"из макса",
-                    "SMS":"из смс"
+                    "TTP": "из приложения с кодами",
+                    "MAX": "из макса",
+                    "SMS": "из смс"
                 }
-                mfa_code = input(f"Введите код {mfa_types[login_res['desc']]}: ")
+                desc = login_res.get('desc', '')
+                source = mfa_types.get(desc, desc)
+                mfa_code = input(f"Введите код {source}: ")
             login_res = await client.esia_mfa(mfa_code, login_res)
             
         tokens = await client.esia_login_end(login_res)

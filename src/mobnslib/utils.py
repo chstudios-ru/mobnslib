@@ -1,10 +1,13 @@
+from __future__ import annotations
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Any, Optional
+import httpx
 from .exceptions import NotJSONResponse
 
 class HTMLTruncateHandler(logging.FileHandler):
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         original_msg = record.msg
         msg_lower = str(record.msg).lower()
         if "<!doctype html>" in msg_lower:
@@ -15,7 +18,7 @@ class HTMLTruncateHandler(logging.FileHandler):
         super().emit(record)
         self.flush()
 
-def check_response(response, log):
+def check_response(response: httpx.Response, log: logging.Logger) -> Any:
     if response.is_error:
         sent_payload = response.request.content.decode('utf-8') if hasattr(response.request, 'content') else ""
         log.error(f"HTTP error: {response.status_code} - {response.text}")
@@ -28,16 +31,15 @@ def check_response(response, log):
         log.error("Response is not valid JSON", exc_info=True)
         raise NotJSONResponse() from e
 
-def get_week_range(pattern: str, day: str = None):
+def get_week_range(pattern: str, day: Optional[str | datetime | date] = None) -> tuple[str, str]:
     if not day:
-        date = datetime.now()
+        date_obj = datetime.now()
+    elif hasattr(day, 'strftime'):
+        date_obj = day
     else:
-        date = datetime.strptime(day, pattern)
+        date_obj = datetime.strptime(day, pattern)
 
-    start_of_week = date - timedelta(days=date.weekday())
+    start_of_week = date_obj - timedelta(days=date_obj.weekday())
     end_of_week = start_of_week + timedelta(days=6)
 
-    start_of_week = start_of_week.strftime(pattern)
-    end_of_week = end_of_week.strftime(pattern)
-
-    return start_of_week, end_of_week
+    return start_of_week.strftime(pattern), end_of_week.strftime(pattern)
