@@ -22,8 +22,8 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/chstudios-ru/osd_back"
-"Bug Tracker" = "https://github.com/chstudios-ru/osd_back/issues"
+"Homepage" = "https://github.com/chstudios-ru/mobnslib"
+"Bug Tracker" = "https://github.com/chstudios-ru/mobnslib/issues"
 
 [project.optional-dependencies]
 test = [
