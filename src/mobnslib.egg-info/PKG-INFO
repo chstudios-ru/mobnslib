@@ -1,10 +1,10 @@
 Metadata-Version: 2.4
 Name: mobnslib
-Version: 1.2.0
+Version: 1.2.1
 Summary: Библиотека для взаимодействия с сетевым дневником (NetSchool)
 Author-email: VelimVIM <sliwkimyau@gmail.com>
-Project-URL: Homepage, https://github.com/chstudios-ru/osd_back
-Project-URL: Bug Tracker, https://github.com/chstudios-ru/osd_back/issues
+Project-URL: Homepage, https://github.com/chstudios-ru/mobnslib
+Project-URL: Bug Tracker, https://github.com/chstudios-ru/mobnslib/issues
 Classifier: Programming Language :: Python :: 3
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
@@ -28,6 +28,14 @@ Dynamic: license-file
 ---
 
 ## 📦 Установка
+
+Библиотека опубликована на **PyPI** (конфигурация сборки описана в `pyproject.toml` в корне):
+
+```bash
+pip install mobnslib
+```
+
+Также можно установить напрямую из репозитория GitHub:
 
 ```bash
 pip install git+https://github.com/chstudios-ru/mobnslib.git
@@ -54,7 +62,14 @@ async def main():
     
     # Если включена двухфакторная аутентификация (MFA)
     if login_data.get('status') == 'ENTER_MFA':
-        code = input("Введите код из SMS/TOTP: ")
+        mfa_types = {
+            "TTP": "из приложения с кодами",
+            "MAX": "из макса",
+            "SMS": "из смс"
+        }
+        desc = login_data.get('desc', '')
+        source = mfa_types.get(desc, desc)
+        code = input(f"Введите код {source}: ")
         login_data = await client.esia_mfa(code, login_data)
         
     # Завершение входа и получение токенов
@@ -87,7 +102,12 @@ if __name__ == "__main__":
 
 * **`esia_login(login, password)`**
   Начинает процесс авторизации.
-  Возвращает словарь `login_data`. Если требуется MFA (2FA), ключ `'status'` будет равен `'ENTER_MFA'`, а `'desc'` содержит тип MFA (`SMS`, `TTP`). Если MFA не требуется, `'status'` равен `'DONE'`.
+  Возвращает словарь `login_data`. Если требуется MFA (2FA), ключ `'status'` будет равен `'ENTER_MFA'`, а ключ `'desc'` указывает способ получения кода:
+  * `"TTP"` — из приложения с кодами (одноразовые коды TOTP, например Google Authenticator или Яндекс Ключ);
+  * `"MAX"` — из приложения / мессенджера Max;
+  * `"SMS"` — из SMS-сообщения.
+  
+  Если MFA не требуется, `'status'` равен `'DONE'`.
 
 * **`esia_mfa(mfa_code, login_data)`**
   Прохождение двухфакторной аутентификации. `login_data` — результат метода `esia_login`. Возвращает обновленный словарь `login_data`.
@@ -130,13 +150,15 @@ if __name__ == "__main__":
   Возвращает расписание (список дней и уроков). 
   Если передать параметр `day` (один день), метод вернет расписание на всю неделю, содержащую этот день. 
   Если передать `start_date` и `end_date`, метод вернет расписание за указанный промежуток (можно запросить неделю, месяц и т.д.).
-  Даты можно передавать как в виде строк, так и в виде объектов `datetime`. Формат `pattern` применяется для преобразования дат `day`, `start_date` и `end_date` в нужный строковый формат. По умолчанию возвращает текущую неделю.
+  Даты можно передавать как в виде строк, так и в виде объектов `datetime` или `date`. Формат `pattern` применяется для преобразования дат `day`, `start_date` и `end_date` в нужный строковый формат. По умолчанию возвращает текущую неделю.
 
 * **`get_assignments(access_token, student_id, classmeeting_ids=None, diary=None, limit=20, delay=0.1)`**
-  Возвращает домашние задания. Вы можете передать готовый список уроков `diary` (результат `get_diary`), и метод сам извлечет задания для этих дней.
+  Возвращает подробные данные домашних заданий по урокам. Вы можете передать готовый список уроков `diary` (результат `get_diary`), и метод сам извлечет задания для этих дней.
+  * **Зачем параметры `limit` и `delay`**: именно таким образом запрашивает данные официальное мобильное приложение NetSchool — порциями по `limit` элементов с небольшими паузами `delay` между запросами. Разработчики официального клиента неспроста используют эту схему: следование ей обеспечивает безопасную загрузку данных, делает поведение библиотеки неотличимым от штатного мобильного клиента, предотвращает перегрузку сервера Сетевого Города и спасает от ошибок `HTTP 429 Too Many Requests`.
 
 * **`get_attachment_info(access_token, assignment_ids=None, diary=None, limit=20, delay=0.1)`**
-  Возвращает список вложений к домашним заданиям. Также может принимать готовый `diary`.
+  Возвращает метаданные вложений к домашним заданиям. Также может принимать готовый `diary`.
+  * **Зачем параметры `limit` и `delay`**: аналогично методу заданий, повторяет проверенный паттерн официального мобильного приложения для порционной загрузки информации о файлах без риска нарваться на блокировки или перегрузить сервер.
 
 * **`load_attachment(access_token, attachment_id)`**
   Скачивает вложение по его ID.
@@ -147,32 +169,60 @@ if __name__ == "__main__":
 * **`get_announcements(access_token, student_id)`**
   Возвращает список школьных объявлений (на доске объявлений).
 
-* **Методы ленты событий (Push-уведомления):**
-  Позволяют получить ленту новых оценок, ДЗ и итогов за `period_days` (дней).
-  - `get_homework_info_events(access_token, student_id, period_days)` — события ДЗ.
-  - `get_result_info_events(...)` — события новых оценок.
-  - `get_term_total_info_events(...)` — события итоговых оценок за период.
-  - `get_year_total_info_events(...)` — события итоговых оценок за год.
-  - `get_all_events(...)` — получить все типы событий разом.
+* **Методы событий (оценки, новое ДЗ и т.д.):**
+  Позволяют получить список событий и итогов за последние 'period_days' (дней):
+  - `get_homework_info_events(access_token, student_id, period_days, ...)` — события новых домашних заданий и итогов за последние 'period_days' (дней).
+  - `get_result_info_events(...)` — события новых выставленных оценок и итогов за последние 'period_days' (дней).
+  - `get_term_total_info_events(...)` — события итоговых оценок за учебный период и итогов за последние 'period_days' (дней).
+  - `get_year_total_info_events(...)` — события итоговых оценок за учебный год и итогов за последние 'period_days' (дней).
+  - `get_all_events(...)` — получить все типы событий и итогов за последние 'period_days' (дней) разом.
 
 ### ✉️ Внутренняя почта (Mail API)
 
 * **`get_mail_unread_count(access_token, student_id)`**
   Возвращает количество непрочитанных писем.
 
-* **Чтение ящиков:**
-  Каждый метод поддерживает пагинацию и сортировку, возвращает словарь вида:
-  `{"page": 1, "pageSize": 20, "totalPages": 1, "totalItems": 7, "items": [...]}`
-  - `get_inbox_mails(access_token, student_id, page_size=20, page=1)` — входящие.
+* **Чтение ящиков (постраничная загрузка писем):**
+  Сервер возвращает письма не сразу всеми сотнями, а порциями (страницами). По умолчанию возвращаются первые 20 писем (`page=1`, `page_size=20`), отсортированные от самых новых к старым.
+  
+  Методы возвращают словарь со структурой:
+  ```json
+  {
+    "page": 1,
+    "pageSize": 20,
+    "totalPages": 5,
+    "totalItems": 94,
+    "items": [...]
+  }
+  ```
+  * `totalItems` — общее количество писем в ящике;
+  * `totalPages` — общее количество страниц;
+  * `page` — текущий номер страницы;
+  * `pageSize` — размер страницы (количество писем, запрашиваемых за раз);
+  * `items` — список самих объектов писем на текущей странице.
+
+  Чтобы получить следующие письма, передавайте номер следующей страницы: `page=2`, `page=3` и т.д.
+  Параметр `invert_sort=True` меняет порядок сортировки (по умолчанию `False` — сначала новые, с `True` — сначала старые).
+
+  Доступные методы для разных ящиков:
+  - `get_inbox_mails(access_token, student_id, page_size=20, page=1, invert_sort=False)` — входящие.
   - `get_sent_mails(...)` — отправленные.
   - `get_draft_mails(...)` — черновики.
   - `get_deleted_mails(...)` — корзина.
 
-* **`read_mail(access_token, student_id, message_id)`**
-  Отмечает письмо как прочитанное.
+* **`read_mail(access_token, student_id, message_id, page_size=150)`**
+  Не только помечает письмо как прочитанное на сервере, но и **возвращает его полный объект со всем содержимым**: телом письма (текстом), темой, автором, подробными списками получателей, прикрепленными вложениями и метаданными.
 
 * **`send_mail(access_token, student_id, subject, text, to_ids, copy=None, hidden_copy=None, attachment_ids=None, message_id=None, notify=False, draft=False)`**
-  Отправка нового письма. `to_ids` — список ID получателей.
+  Отправка нового письма или сохранение черновика:
+  * `subject` и `text` — тема и текст сообщения;
+  * `to_ids` — список ID основных получателей (поле «Кому»);
+  * `copy` — список ID пользователей для открытой копии (поле «Копия», видны всем адресатам);
+  * `hidden_copy` — список ID для скрытой копии (поле «Скрытая копия», не видны другим получателям);
+  * `attachment_ids` — список ID прикрепленных файлов (предварительно загруженных через `upload_attachment`);
+  * `message_id` — ID сообщения при редактировании существующего черновика;
+  * `notify` — запрос отчета о прочтении (если `True`, отправителю придет уведомление, когда получатель откроет письмо);
+  * `draft` — сохранить в «Черновики» без отправки (если `True`).
 
 * **`delete_mail(access_token, student_id, message_id)`**
   Перемещает письмо в корзину.
